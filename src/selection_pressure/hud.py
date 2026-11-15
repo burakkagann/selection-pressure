@@ -100,6 +100,10 @@ _PRED_GENOME_LABELS = [
 ]
 
 
+# The evolution panel never covers more than this share of the window.
+PANEL_MAX_HEIGHT = 0.9
+PANEL_MAX_WIDTH = 0.4
+
 _evo_panel_cache = None
 _evo_panel_pos = None
 _evo_cache_frame = -100
@@ -457,6 +461,15 @@ def render_evolution_panel(
 
         # Advance y past the predator section (single column height)
         y = y + single_pred_h
+
+    # --- Fit small windows: shrink the panel instead of letting it overflow ---
+    scr_w, scr_h = screen.get_size()
+    fit = min(1.0, PANEL_MAX_HEIGHT * scr_h / panel_h, PANEL_MAX_WIDTH * scr_w / panel_w)
+    if fit < 1.0:
+        panel = pygame.transform.smoothscale(
+            panel, (max(1, int(panel_w * fit)), max(1, int(panel_h * fit)))
+        )
+        panel_y = scr_h - panel.get_height() - 16
 
     # --- Cache and blit panel onto screen ---
     _evo_panel_cache = panel
