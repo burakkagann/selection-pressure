@@ -3,7 +3,7 @@
 Frames are rendered as fast as the machine allows and piped to ffmpeg, so the
 output plays at a steady frame rate even when live rendering would drop
 frames.  The output format follows the file extension: ``.mp4`` (H.264) or
-``.gif`` (palette-optimised, half resolution, good for READMEs).
+``.gif`` (palette-optimised, at most 720 px wide, good for READMEs).
 """
 
 from __future__ import annotations
@@ -13,6 +13,10 @@ import subprocess
 from pathlib import Path
 
 import pygame
+
+# GIFs are for READMEs and chat: keep them small.
+GIF_MAX_WIDTH = 720
+GIF_MAX_FPS = 20
 
 
 class RecorderError(RuntimeError):
@@ -38,10 +42,10 @@ def _ffmpeg_command(path: Path, size: tuple[int, int], fps: int) -> list[str]:
         "-",
     ]
     if path.suffix.lower() == ".gif":
-        gif_fps = min(fps, 25)
+        gif_fps = min(fps, GIF_MAX_FPS)
         cmd += [
             "-vf",
-            f"fps={gif_fps},scale=iw/2:-1:flags=lanczos,split[a][b];"
+            f"fps={gif_fps},scale='min({GIF_MAX_WIDTH},iw)':-2:flags=lanczos,split[a][b];"
             "[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer",
         ]
     else:
