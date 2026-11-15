@@ -610,116 +610,6 @@ SEED = 42
 
 
 # ============================================================
-# INJECTABLE PARAMETER DATACLASSES
-# ============================================================
-# These bundle behavioral parameters into objects that can be passed to
-# simulation classes.  Defaults match the module-level constants above.
-# Custom BoidParams / PredatorParams instances can be passed to
-# BoidsSimulation / BlackHolePredator (e.g. for headless experiments);
-# per-boid evolved values live in BoidsSimulation.per_boid_params.
-
-
-@dataclass
-class BoidParams:
-    """Behavioral parameters for boid flocking.
-
-    Pass to BoidsSimulation to override global defaults.  For per-boid
-    variation (GA genomes), pass arrays via BoidsSimulation.per_boid_params
-    dict — keys match field names, values are numpy arrays of shape (N,).
-    """
-
-    # Core flocking
-    separation_radius: float = SEPARATION_RADIUS
-    alignment_radius: float = ALIGNMENT_RADIUS
-    cohesion_radius: float = COHESION_RADIUS
-    separation_weight: float = SEPARATION_WEIGHT
-    alignment_weight: float = ALIGNMENT_WEIGHT
-    cohesion_weight: float = COHESION_WEIGHT
-    max_speed: float = MAX_SPEED
-    min_speed: float = MIN_SPEED
-    max_force: float = MAX_FORCE
-    # Noise flow field
-    noise_influence: float = NOISE_INFLUENCE
-    noise_scale: float = NOISE_SCALE
-    noise_speed: float = NOISE_SPEED
-    # Attractor
-    attractor_enabled: bool = ATTRACTOR_ENABLED
-    attractor_strength: float = ATTRACTOR_STRENGTH
-    attractor_orbit_radius: float = ATTRACTOR_ORBIT_RADIUS
-    attractor_orbits: float = ATTRACTOR_ORBITS
-    # Timing (used for attractor orbit speed calculation)
-    target_fps: int = TARGET_FPS
-
-
-@dataclass
-class PredatorParams:
-    """Behavioral parameters for a black hole predator.
-
-    Pass to BlackHolePredator to override global defaults.  Each predator
-    can have its own PredatorParams, enabling per-predator evolved strategies.
-    """
-
-    # Movement
-    speed: float = BLACK_HOLE_SPEED
-    max_force: float = BLACK_HOLE_MAX_FORCE
-    sight_radius: float = BLACK_HOLE_SIGHT_RADIUS
-    # Boid flee response (read by BoidsSimulation during flee calculation)
-    flee_radius: float = BLACK_HOLE_FLEE_RADIUS
-    flee_weight: float = BLACK_HOLE_FLEE_WEIGHT
-    panic_radius: float = BLACK_HOLE_PANIC_RADIUS
-    panic_weight: float = BLACK_HOLE_PANIC_WEIGHT
-    consume_radius: float = BLACK_HOLE_CONSUME_RADIUS
-    # Lunge attack
-    lunge_radius: float = BLACK_HOLE_LUNGE_RADIUS
-    lunge_speed: float = BLACK_HOLE_LUNGE_SPEED
-    lunge_duration: int = BLACK_HOLE_LUNGE_DURATION
-    lunge_cooldown: int = BLACK_HOLE_LUNGE_COOLDOWN
-    # Predator-predator separation
-    separation_radius: float = BLACK_HOLE_SEPARATION_RADIUS
-    separation_weight: float = BLACK_HOLE_SEPARATION_WEIGHT
-    # Accretion particles (visual, but computed in simulation step)
-    accretion_enabled: bool = ACCRETION_ENABLED
-    accretion_lifetime: int = ACCRETION_LIFETIME
-    accretion_spin_speed: float = ACCRETION_SPIN_SPEED
-    accretion_infall_rate: float = ACCRETION_INFALL_RATE
-
-
-# ============================================================
-# GENOME DEFINITION (fields evolved per boid)
-# ============================================================
-# Each entry: (field_name, default_value, min_bound, max_bound)
-# min/max prevent degenerate values after mutation.
-
-GENOME_FIELDS = [
-    ('separation_weight', SEPARATION_WEIGHT, 0.5, 15.0),
-    ('alignment_weight', ALIGNMENT_WEIGHT, 0.05, 5.0),
-    ('cohesion_weight', COHESION_WEIGHT, 0.02, 3.0),
-    ('separation_radius', SEPARATION_RADIUS, 10.0, 150.0),
-    ('alignment_radius', ALIGNMENT_RADIUS, 15.0, 150.0),
-    ('cohesion_radius', COHESION_RADIUS, 20.0, 250.0),
-    ('max_speed', MAX_SPEED, 1.5, 8.0),
-    ('min_speed', MIN_SPEED, 0.2, 3.0),
-    ('max_force', MAX_FORCE, 0.03, 0.4),
-]
-
-# ============================================================
-# PREDATOR GENOME DEFINITION (fields evolved per predator)
-# ============================================================
-# Each entry: (field_name, default_value, min_bound, max_bound)
-# Field names match PredatorParams dataclass attributes.
-
-PREDATOR_GENOME_FIELDS = [
-    ('speed', BLACK_HOLE_SPEED, 2.0, 6.0),
-    ('max_force', BLACK_HOLE_MAX_FORCE, 0.05, 0.25),
-    ('sight_radius', BLACK_HOLE_SIGHT_RADIUS, 200.0, 800.0),
-    ('lunge_speed', BLACK_HOLE_LUNGE_SPEED, 4.0, 8.0),
-    ('lunge_duration', BLACK_HOLE_LUNGE_DURATION, 15, 80),
-    ('lunge_cooldown', BLACK_HOLE_LUNGE_COOLDOWN, 40, 300),
-    ('consume_radius', BLACK_HOLE_CONSUME_RADIUS, 10.0, 40.0),
-]
-
-
-# ============================================================
 # NEBULA RESOURCE FIELDS
 # ============================================================
 # Nebula gas clouds scattered across the canvas.  Stars must forage
@@ -796,13 +686,117 @@ BH_MASS_RADIUS_EXPONENT = 1.0  # radii ~ mass^(1.0): heavier = bigger (linear)
 BH_MASS_FORCE_EXPONENT = 0.3  # steering ~ mass^(0.3)
 BH_MASS_LUNGE_SPEED_EXPONENT = -0.3  # lunge speed penalty when heavy
 
+
 # ============================================================
-# ECOSYSTEM GENOME FIELDS (appended after constants are defined)
+# INJECTABLE PARAMETER DATACLASSES
 # ============================================================
-# Evolved per-boid traits for nebula/quorum systems.
-GENOME_FIELDS.extend(
-    [
-        ('chemotaxis_strength', CHEMOTAXIS_STRENGTH, 0.01, 0.3),
-        ('quorum_threshold', float(QUORUM_THRESHOLD), 50.0, 400.0),
-    ]
-)
+# These bundle behavioral parameters into objects that can be passed to
+# simulation classes.  Defaults match the module-level constants above.
+# Custom BoidParams / PredatorParams instances can be passed to
+# BoidsSimulation / BlackHolePredator (e.g. for headless experiments);
+# per-boid evolved values live in BoidsSimulation.per_boid_params.
+
+
+@dataclass
+class BoidParams:
+    """Behavioral parameters for boid flocking.
+
+    Pass to BoidsSimulation to override global defaults.  For per-boid
+    variation (GA genomes), pass arrays via BoidsSimulation.per_boid_params
+    dict — keys match field names, values are numpy arrays of shape (N,).
+    """
+
+    # Core flocking
+    separation_radius: float = SEPARATION_RADIUS
+    alignment_radius: float = ALIGNMENT_RADIUS
+    cohesion_radius: float = COHESION_RADIUS
+    separation_weight: float = SEPARATION_WEIGHT
+    alignment_weight: float = ALIGNMENT_WEIGHT
+    cohesion_weight: float = COHESION_WEIGHT
+    max_speed: float = MAX_SPEED
+    min_speed: float = MIN_SPEED
+    max_force: float = MAX_FORCE
+    # Noise flow field
+    noise_influence: float = NOISE_INFLUENCE
+    noise_scale: float = NOISE_SCALE
+    noise_speed: float = NOISE_SPEED
+    # Attractor
+    attractor_enabled: bool = ATTRACTOR_ENABLED
+    attractor_strength: float = ATTRACTOR_STRENGTH
+    attractor_orbit_radius: float = ATTRACTOR_ORBIT_RADIUS
+    attractor_orbits: float = ATTRACTOR_ORBITS
+    # Ecosystem traits (also evolved per boid when evolution is on)
+    chemotaxis_strength: float = CHEMOTAXIS_STRENGTH
+    quorum_threshold: float = float(QUORUM_THRESHOLD)
+    # Timing (used for attractor orbit speed calculation)
+    target_fps: int = TARGET_FPS
+
+
+@dataclass
+class PredatorParams:
+    """Behavioral parameters for a black hole predator.
+
+    Pass to BlackHolePredator to override global defaults.  Each predator
+    can have its own PredatorParams, enabling per-predator evolved strategies.
+    """
+
+    # Movement
+    speed: float = BLACK_HOLE_SPEED
+    max_force: float = BLACK_HOLE_MAX_FORCE
+    sight_radius: float = BLACK_HOLE_SIGHT_RADIUS
+    # Boid flee response (read by BoidsSimulation during flee calculation)
+    flee_radius: float = BLACK_HOLE_FLEE_RADIUS
+    flee_weight: float = BLACK_HOLE_FLEE_WEIGHT
+    panic_radius: float = BLACK_HOLE_PANIC_RADIUS
+    panic_weight: float = BLACK_HOLE_PANIC_WEIGHT
+    consume_radius: float = BLACK_HOLE_CONSUME_RADIUS
+    # Lunge attack
+    lunge_radius: float = BLACK_HOLE_LUNGE_RADIUS
+    lunge_speed: float = BLACK_HOLE_LUNGE_SPEED
+    lunge_duration: int = BLACK_HOLE_LUNGE_DURATION
+    lunge_cooldown: int = BLACK_HOLE_LUNGE_COOLDOWN
+    # Predator-predator separation
+    separation_radius: float = BLACK_HOLE_SEPARATION_RADIUS
+    separation_weight: float = BLACK_HOLE_SEPARATION_WEIGHT
+    # Accretion particles (visual, but computed in simulation step)
+    accretion_enabled: bool = ACCRETION_ENABLED
+    accretion_lifetime: int = ACCRETION_LIFETIME
+    accretion_spin_speed: float = ACCRETION_SPIN_SPEED
+    accretion_infall_rate: float = ACCRETION_INFALL_RATE
+
+
+# ============================================================
+# GENOME DEFINITION (fields evolved per boid)
+# ============================================================
+# Each entry: (field_name, default_value, min_bound, max_bound)
+# min/max prevent degenerate values after mutation.
+
+GENOME_FIELDS = [
+    ('separation_weight', SEPARATION_WEIGHT, 0.5, 15.0),
+    ('alignment_weight', ALIGNMENT_WEIGHT, 0.05, 5.0),
+    ('cohesion_weight', COHESION_WEIGHT, 0.02, 3.0),
+    ('separation_radius', SEPARATION_RADIUS, 10.0, 150.0),
+    ('alignment_radius', ALIGNMENT_RADIUS, 15.0, 150.0),
+    ('cohesion_radius', COHESION_RADIUS, 20.0, 250.0),
+    ('max_speed', MAX_SPEED, 1.5, 8.0),
+    ('min_speed', MIN_SPEED, 0.2, 3.0),
+    ('max_force', MAX_FORCE, 0.03, 0.4),
+    ('chemotaxis_strength', CHEMOTAXIS_STRENGTH, 0.01, 0.3),
+    ('quorum_threshold', float(QUORUM_THRESHOLD), 50.0, 400.0),
+]
+
+# ============================================================
+# PREDATOR GENOME DEFINITION (fields evolved per predator)
+# ============================================================
+# Each entry: (field_name, default_value, min_bound, max_bound)
+# Field names match PredatorParams dataclass attributes.
+
+PREDATOR_GENOME_FIELDS = [
+    ('speed', BLACK_HOLE_SPEED, 2.0, 6.0),
+    ('max_force', BLACK_HOLE_MAX_FORCE, 0.05, 0.25),
+    ('sight_radius', BLACK_HOLE_SIGHT_RADIUS, 200.0, 800.0),
+    ('lunge_speed', BLACK_HOLE_LUNGE_SPEED, 4.0, 8.0),
+    ('lunge_duration', BLACK_HOLE_LUNGE_DURATION, 15, 80),
+    ('lunge_cooldown', BLACK_HOLE_LUNGE_COOLDOWN, 40, 300),
+    ('consume_radius', BLACK_HOLE_CONSUME_RADIUS, 10.0, 40.0),
+]
