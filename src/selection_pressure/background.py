@@ -288,6 +288,7 @@ def update_twinkle_overlay(overlay, twinkle_data, frame, fps):
     The overlay is composited additively onto the screen.
     """
     overlay.fill((0, 0, 0))
+    width, height = overlay.get_size()
     t = frame / max(fps, 1)
 
     for star in twinkle_data:
@@ -308,7 +309,7 @@ def update_twinkle_overlay(overlay, twinkle_data, frame, fps):
             for gx in range(-glow_r, glow_r + 1):
                 for gy in range(-glow_r, glow_r + 1):
                     nx, ny = x + gx, y + gy
-                    if 0 <= nx < config.WIDTH and 0 <= ny < config.HEIGHT:
+                    if 0 <= nx < width and 0 <= ny < height:
                         dist_sq = gx * gx + gy * gy
                         intensity = b * np.exp(
                             -dist_sq / (2 * sigma * sigma))
@@ -322,5 +323,5 @@ def update_twinkle_overlay(overlay, twinkle_data, frame, fps):
             overlay.set_at((x, y), color)
             for dx_off, dy_off in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                 nx, ny = x + dx_off, y + dy_off
-                if 0 <= nx < config.WIDTH and 0 <= ny < config.HEIGHT:
+                if 0 <= nx < width and 0 <= ny < height:
                     overlay.set_at((nx, ny), dim)
