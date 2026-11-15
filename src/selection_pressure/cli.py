@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, app, config
+from .recorder import RecorderError
 
 
 def _window_size(text: str) -> tuple[int, int]:
@@ -94,6 +95,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="starting black holes (default %(default)s)",
     )
 
+    rec = p.add_argument_group("recording (needs ffmpeg on PATH)")
+    rec.add_argument(
+        "--record", type=Path, metavar="FILE", help="render offline to FILE (.mp4 or .gif) and exit"
+    )
+    rec.add_argument(
+        "--duration",
+        type=float,
+        default=15.0,
+        metavar="SECONDS",
+        help="length of the recording (default %(default)s)",
+    )
+    rec.add_argument(
+        "--warmup",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="simulate this long before recording starts (default %(default)s)",
+    )
+
     dev = p.add_argument_group("development")
     dev.add_argument(
         "--frames",
@@ -129,6 +149,9 @@ def parse_args(argv: list[str] | None = None) -> app.Options:
         kiosk=ns.kiosk,
         profile=ns.profile,
         screenshot_dir=ns.screenshot_dir,
+        record=ns.record,
+        record_seconds=ns.duration,
+        warmup_seconds=ns.warmup,
     )
 
 
@@ -136,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     options = parse_args(argv)
     try:
         app.run(options)
-    except ValueError as exc:  # e.g. a --display index that does not exist
+    except (ValueError, RecorderError) as exc:  # bad --display, missing ffmpeg...
         print(f"selection-pressure: error: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

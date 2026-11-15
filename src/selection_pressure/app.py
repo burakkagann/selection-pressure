@@ -16,6 +16,7 @@ from pathlib import Path
 import pygame
 
 from . import background, config, display, hud, rendering
+from .recorder import Recorder
 from .simulation import BlackHolePredator, BoidsSimulation
 
 MAX_BLACK_HOLES = 3
@@ -44,6 +45,9 @@ class Options:
     kiosk: bool = False
     profile: bool = False
     screenshot_dir: Path = Path(".")
+    record: Path | None = None  # render offline to this .mp4 / .gif and exit
+    record_seconds: float = 15.0
+    warmup_seconds: float = 0.0
 
 
 # ============================================================
@@ -421,8 +425,42 @@ class App:
             if self.help_alpha <= 0:
                 self.show_help = self.help_auto_fade = False
 
+    def record(self):
+        """Render ``record_seconds`` of video offline, after an optional warm-up.
+
+        Frames are produced as fast as possible and encoded at ``fps``, so the
+        result is smooth even on a machine that cannot render in real time.
+        """
+        fps = self.opts.fps
+        warmup = int(self.opts.warmup_seconds * fps)
+        total = int(self.opts.record_seconds * fps)
+        self.show_help = False
+        if warmup:
+            print(f"  Warming up for {warmup} frames...")
+            for _ in range(warmup):
+                pygame.event.pump()
+                self.step()
+                self.draw()
+        recorder = Recorder(self.opts.record, self.size, fps)
+        print(f"  Recording {total} frames to {self.opts.record}")
+        try:
+            for i in range(total):
+                pygame.event.pump()
+                self.step()
+                self.draw()
+                pygame.display.flip()
+                recorder.write(self.screen)
+                if (i + 1) % fps == 0:
+                    print(f"    {(i + 1) // fps}/{total // fps} s")
+        finally:
+            recorder.close()
+        print(f"  Saved {recorder.frames} frames to {self.opts.record}")
+
     def run(self):
         """Main loop.  Returns when the window closes or ``frames`` is reached."""
+        if self.opts.record is not None:
+            self.record()
+            return
         w, h = self.size
         print(f"\n  SELECTION PRESSURE  {w}x{h}, {self.sim.num} stars, seed {self.seed}")
         print("  ESC/Q quit  SPACE pause  R reset  F fullscreen  S screenshot  H help\n")
