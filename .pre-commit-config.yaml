@@ -9,6 +9,7 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ["--maxkb=1000"]  # keeps recordings and screenshots out of git
+        exclude: ^docs/demo\.gif$
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.5
     hooks:
