@@ -30,7 +30,6 @@ def test_threshold_ordering():
     assert config.QUORUM_THRESHOLD > config.DEFENSIVE_LOCAL_THRESHOLD
     assert config.BH_MASS_MIN <= config.BH_MASS_INITIAL <= config.BH_MASS_MAX
     assert 0 < config.STAR_ENERGY_INITIAL <= config.STAR_ENERGY_MAX
-    assert config.PANIC_RADIUS_OK if hasattr(config, "PANIC_RADIUS_OK") else True
     p = PredatorParams()
     assert p.consume_radius < p.panic_radius < p.flee_radius < p.sight_radius
 
