@@ -22,6 +22,10 @@ from .config import BoidParams, PredatorParams
 from .nebula import NebulaField
 
 
+# Max-speed multiplier for boids inside any black hole's flee radius.
+FLEE_SPEED_BOOST = 1.15
+
+
 # ============================================================
 # GEOMETRY HELPERS
 # ============================================================
@@ -408,6 +412,7 @@ class BoidsSimulation:
         has_predators = predators is not None and len(predators) > 0
         # Track minimum distance to ANY predator (for fear color + speed boost)
         min_bh_dist = np.full(self.num, np.inf)
+        fleeing = np.zeros(self.num, dtype=bool)  # inside any flee radius
 
         # Limit flock forces (per-boid max_force when evolving)
         max_force_arr = self._p('max_force')
@@ -439,6 +444,7 @@ class BoidsSimulation:
 
                 # Outer flee
                 flee_mask = bh_dist < eff_flee_r
+                fleeing |= flee_mask
                 flee_t = np.where(flee_mask,
                                   1.0 - bh_dist / eff_flee_r, 0)
                 flee_str = flee_t * pp.flee_weight * p.max_force
@@ -516,11 +522,7 @@ class BoidsSimulation:
 
         # Fleeing boids get a speed boost, others capped at per-boid max_speed
         max_speed_arr = self._p('max_speed')
-        if has_predators:
-            flee_r = predators[0].params.flee_radius
-            flee_boost = np.where(min_bh_dist < flee_r, 1.15, 1.0)
-        else:
-            flee_boost = np.ones(self.num)
+        flee_boost = np.where(fleeing, FLEE_SPEED_BOOST, 1.0)
         effective_max = max_speed_arr * flee_boost
         over_speed = self.speeds > effective_max
         if np.any(over_speed):
