@@ -23,6 +23,30 @@ from .nebula import NebulaField
 
 
 # ============================================================
+# GEOMETRY HELPERS
+# ============================================================
+
+def wrap_delta(delta, size):
+    """Shortest signed distance on a torus of the given size."""
+    return delta - size * np.round(delta / size)
+
+
+def pairwise_offsets(positions, width, height):
+    """Toroidal pairwise offsets and distances as float32 (N, N) arrays.
+
+    float32 halves memory bandwidth for the O(N^2) arrays.
+    Returns (dx, dy, dist) where dx[i, j] = x_i - x_j.
+    """
+    pos = positions.astype(np.float32)
+    w, h = np.float32(width), np.float32(height)
+    dx = pos[:, np.newaxis, 0] - pos[np.newaxis, :, 0]
+    dy = pos[:, np.newaxis, 1] - pos[np.newaxis, :, 1]
+    dx -= w * np.round(dx / w)
+    dy -= h * np.round(dy / h)
+    return dx, dy, np.sqrt(dx * dx + dy * dy)
+
+
+# ============================================================
 # CURL NOISE (flow field)
 # ============================================================
 
@@ -80,6 +104,14 @@ class BoidsSimulation:
         total_consumed — int, cumulative boids eaten across all predators
         _bh_dist     — (N,) min distance to nearest predator (after step)
     """
+
+    # Arrays with one entry per boid, kept in sync by _append_boids and
+    # remove_boids (genome arrays in per_boid_params are handled separately).
+    PER_BOID_ARRAYS = (
+        'positions', 'velocities', 'phase_offsets', 'speeds', 'energy',
+        'in_defensive', 'in_quorum', 'quorum_neighbors', 'lineage_ids',
+        'birth_frame',
+    )
 
     def __init__(self, num_boids, width, height, seed=42,
                  params=None, per_boid_params=None):
@@ -158,56 +190,45 @@ class BoidsSimulation:
         self.width, self.height = width, height
         self._bh_dist = None
 
-    def add_boids(self, count, frame_num=0):
-        """Add new boids at random edge positions without resetting."""
+    def _edge_positions(self, n):
+        """Random positions on the four screen edges, shape (n, 2)."""
         rng = self.rng
-        n = count
-
-        # Spawn at random screen edges (same as respawn logic)
-        new_pos = np.empty((n, 2))
-        edges = rng.integers(0, 4, n)
-        for j in range(n):
-            if edges[j] == 0:
-                new_pos[j] = [rng.uniform(0, self.width), 0]
-            elif edges[j] == 1:
-                new_pos[j] = [self.width, rng.uniform(0, self.height)]
-            elif edges[j] == 2:
-                new_pos[j] = [rng.uniform(0, self.width), self.height]
+        pos = np.empty((n, 2))
+        for j, edge in enumerate(rng.integers(0, 4, n)):
+            if edge == 0:
+                pos[j] = [rng.uniform(0, self.width), 0]
+            elif edge == 1:
+                pos[j] = [self.width, rng.uniform(0, self.height)]
+            elif edge == 2:
+                pos[j] = [rng.uniform(0, self.width), self.height]
             else:
-                new_pos[j] = [0, rng.uniform(0, self.height)]
+                pos[j] = [0, rng.uniform(0, self.height)]
+        return pos
 
-        # Velocity toward center
-        center = np.array([self.width / 2, self.height / 2])
-        directions = center - new_pos
-        directions /= np.linalg.norm(directions, axis=1, keepdims=True) + 1e-10
-        speed = rng.uniform(1.0, self.params.max_speed * 0.5, n)
-        new_vel = directions * speed[:, np.newaxis]
-
-        self.positions = np.vstack([self.positions, new_pos])
-        self.velocities = np.vstack([self.velocities, new_vel])
-        self.phase_offsets = np.concatenate([
-            self.phase_offsets, rng.uniform(0, 1, n)])
-        self.speeds = np.concatenate([self.speeds, np.full(n, 2.0)])
-
-        # Energy + collective state for new boids
-        self.energy = np.concatenate([
-            self.energy, np.full(n, cfg.STAR_ENERGY_INITIAL)])
-        self.in_defensive = np.concatenate([
-            self.in_defensive, np.zeros(n, dtype=bool)])
-        self.in_quorum = np.concatenate([
-            self.in_quorum, np.zeros(n, dtype=bool)])
-        self.quorum_neighbors = np.concatenate([
-            self.quorum_neighbors, np.zeros(n, dtype=np.int32)])
-
-        # Lineage: each new boid gets a unique ID (wrapped to 0-999)
+    def _append_boids(self, new_pos, new_vel, new_speeds, frame_num):
+        """Append boids with fresh state, new lineages and a default genome."""
+        rng = self.rng
+        n = len(new_pos)
         new_ids = np.arange(
             self._next_lineage_id, self._next_lineage_id + n, dtype=np.int32) % 1000
         self._next_lineage_id += n
-        self.lineage_ids = np.concatenate([self.lineage_ids, new_ids])
-        self.birth_frame = np.concatenate([
-            self.birth_frame, np.full(n, frame_num, dtype=np.int64)])
+        phase = rng.uniform(0, 1, n)
+        fresh = {
+            'positions': new_pos,
+            'velocities': new_vel,
+            'phase_offsets': phase,
+            'speeds': new_speeds,
+            'energy': np.full(n, cfg.STAR_ENERGY_INITIAL),
+            'in_defensive': np.zeros(n, dtype=bool),
+            'in_quorum': np.zeros(n, dtype=bool),
+            'quorum_neighbors': np.zeros(n, dtype=np.int32),
+            'lineage_ids': new_ids,
+            'birth_frame': np.full(n, frame_num, dtype=np.int64),
+        }
+        for name in self.PER_BOID_ARRAYS:
+            setattr(self, name, np.concatenate([getattr(self, name), fresh[name]]))
 
-        # Genome: initialize with small perturbation from defaults
+        # Genome: small perturbation from the defaults
         if cfg.EVOLUTION_ENABLED and self.per_boid_params:
             for field_name, default, lo, hi in cfg.GENOME_FIELDS:
                 sigma = abs(default) * cfg.MUTATION_SIGMA_FRAC
@@ -219,31 +240,31 @@ class BoidsSimulation:
         self.num += n
         self._bh_dist = None  # invalidate stale predator distances
 
-    def remove_boids(self, count):
-        """Remove boids (youngest first) without resetting."""
-        count = min(count, self.num - 10)  # keep at least 10
+    def add_boids(self, count, frame_num=0):
+        """Add boids at random screen edges, heading toward the centre."""
         if count <= 0:
             return
-        # Remove the youngest boids (highest birth_frame)
+        new_pos = self._edge_positions(count)
+        center = np.array([self.width / 2, self.height / 2])
+        directions = center - new_pos
+        directions /= np.linalg.norm(directions, axis=1, keepdims=True) + 1e-10
+        speed = self.rng.uniform(1.0, self.params.max_speed * 0.5, count)
+        self._append_boids(new_pos, directions * speed[:, np.newaxis],
+                           np.full(count, 2.0), frame_num)
+
+    def remove_boids(self, count):
+        """Remove the youngest boids, always keeping at least 10."""
+        count = min(count, self.num - 10)
+        if count <= 0:
+            return
         remove_idx = np.argsort(self.birth_frame)[-count:]
-        keep_mask = np.ones(self.num, dtype=bool)
-        keep_mask[remove_idx] = False
+        keep = np.ones(self.num, dtype=bool)
+        keep[remove_idx] = False
 
-        self.positions = self.positions[keep_mask]
-        self.velocities = self.velocities[keep_mask]
-        self.phase_offsets = self.phase_offsets[keep_mask]
-        self.speeds = self.speeds[keep_mask]
-        self.lineage_ids = self.lineage_ids[keep_mask]
-        self.birth_frame = self.birth_frame[keep_mask]
-        self.energy = self.energy[keep_mask]
-        self.in_defensive = self.in_defensive[keep_mask]
-        self.in_quorum = self.in_quorum[keep_mask]
-        self.quorum_neighbors = self.quorum_neighbors[keep_mask]
-
-        if self.per_boid_params:
-            for field_name in self.per_boid_params:
-                self.per_boid_params[field_name] = \
-                    self.per_boid_params[field_name][keep_mask]
+        for name in self.PER_BOID_ARRAYS:
+            setattr(self, name, getattr(self, name)[keep])
+        for field_name in self.per_boid_params:
+            self.per_boid_params[field_name] = self.per_boid_params[field_name][keep]
 
         self.num = self.positions.shape[0]
         self._bh_dist = None  # invalidate stale predator distances
@@ -257,16 +278,7 @@ class BoidsSimulation:
         """
         p = self.params  # shorthand for readability
 
-        # Use float32 for pairwise arrays — halves memory bandwidth
-        # (N=500: 1MB vs 2MB per array; N=1000: 4MB vs 8MB)
-        pos_f32 = self.positions.astype(np.float32)
-        dx = pos_f32[:, np.newaxis, 0] - pos_f32[np.newaxis, :, 0]
-        dy = pos_f32[:, np.newaxis, 1] - pos_f32[np.newaxis, :, 1]
-        w_f32 = np.float32(self.width)
-        h_f32 = np.float32(self.height)
-        dx -= w_f32 * np.round(dx / w_f32)
-        dy -= h_f32 * np.round(dy / h_f32)
-        dist = np.sqrt(dx * dx + dy * dy)
+        dx, dy, dist = pairwise_offsets(self.positions, self.width, self.height)
 
         # Helper: reshape per-boid arrays to (N,1) for row-wise broadcast.
         # Scalars pass through unchanged (numpy broadcasting handles it).
@@ -279,13 +291,10 @@ class BoidsSimulation:
         # Separation — each boid's own separation_radius applies to its row
         sep_mask = (dist < _col('separation_radius')) & (dist > 0)
         sep_w = np.where(sep_mask, 1.0 / (dist ** 2 + 1e-10), 0)
-        sep_weight = self._p('separation_weight')
-        if isinstance(sep_weight, np.ndarray):
-            sep_weight = sep_weight[:, np.newaxis]
         separation = np.stack([
             (sep_w * dx).sum(axis=1),
             (sep_w * dy).sum(axis=1)
-        ], axis=1) * sep_weight
+        ], axis=1) * _col('separation_weight')
 
         # Alignment
         align_mask = (dist < _col('alignment_radius')) & (dist > 0)
@@ -294,21 +303,15 @@ class BoidsSimulation:
             (align_mask * self.velocities[:, 0][np.newaxis, :]).sum(axis=1),
             (align_mask * self.velocities[:, 1][np.newaxis, :]).sum(axis=1)
         ], axis=1) / align_count
-        align_weight = self._p('alignment_weight')
-        if isinstance(align_weight, np.ndarray):
-            align_weight = align_weight[:, np.newaxis]
-        alignment = (avg_vel - self.velocities) * align_weight
+        alignment = (avg_vel - self.velocities) * _col('alignment_weight')
 
         # Cohesion
         coh_mask = (dist < _col('cohesion_radius')) & (dist > 0)
         coh_count = coh_mask.sum(axis=1, keepdims=True).clip(1)
-        coh_weight = self._p('cohesion_weight')
-        if isinstance(coh_weight, np.ndarray):
-            coh_weight = coh_weight[:, np.newaxis]
         cohesion = np.stack([
             -(np.where(coh_mask, dx, 0)).sum(axis=1),
             -(np.where(coh_mask, dy, 0)).sum(axis=1)
-        ], axis=1) / coh_count * coh_weight
+        ], axis=1) / coh_count * _col('cohesion_weight')
 
         accel = separation + alignment + cohesion
 
@@ -330,8 +333,8 @@ class BoidsSimulation:
 
             adx = ax - self.positions[:, 0]
             ady = ay - self.positions[:, 1]
-            adx -= self.width * np.round(adx / self.width)
-            ady -= self.height * np.round(ady / self.height)
+            adx = wrap_delta(adx, self.width)
+            ady = wrap_delta(ady, self.height)
             adist = np.sqrt(adx ** 2 + ady ** 2).clip(1e-10)
             pull = p.attractor_strength * np.tanh(adist / 200)
             accel[:, 0] += adx / adist * pull
@@ -347,10 +350,7 @@ class BoidsSimulation:
             if cfg.STAR_ENERGY_ENABLED:
                 hunger = np.clip(
                     1.0 - self.energy / cfg.STAR_ENERGY_LOW_THRESHOLD, 0, 1)
-                if isinstance(chem_str, np.ndarray):
-                    effective = chem_str * (1.0 + hunger * cfg.CHEMOTAXIS_HUNGER_MULT)
-                else:
-                    effective = chem_str * (1.0 + hunger * cfg.CHEMOTAXIS_HUNGER_MULT)
+                effective = chem_str * (1.0 + hunger * cfg.CHEMOTAXIS_HUNGER_MULT)
             else:
                 effective = chem_str
             if isinstance(effective, np.ndarray):
@@ -423,8 +423,8 @@ class BoidsSimulation:
                 pp = pred.params  # predator's behavioral params
                 bh_dx = self.positions[:, 0] - pred.position[0]
                 bh_dy = self.positions[:, 1] - pred.position[1]
-                bh_dx -= self.width * np.round(bh_dx / self.width)
-                bh_dy -= self.height * np.round(bh_dy / self.height)
+                bh_dx = wrap_delta(bh_dx, self.width)
+                bh_dy = wrap_delta(bh_dy, self.height)
                 bh_dist = np.sqrt(bh_dx ** 2 + bh_dy ** 2).clip(1e-10)
                 bh_ux = bh_dx / bh_dist
                 bh_uy = bh_dy / bh_dist
@@ -488,20 +488,9 @@ class BoidsSimulation:
                         self._evolve_dead_boids(
                             consume_idx, living_mask, frame_num, dist)
 
-                    edges = self.rng.integers(0, 4, n_eaten)
-                    for j, idx in enumerate(consume_idx):
-                        if edges[j] == 0:
-                            self.positions[idx] = [
-                                self.rng.uniform(0, self.width), 0]
-                        elif edges[j] == 1:
-                            self.positions[idx] = [
-                                self.width, self.rng.uniform(0, self.height)]
-                        elif edges[j] == 2:
-                            self.positions[idx] = [
-                                self.rng.uniform(0, self.width), self.height]
-                        else:
-                            self.positions[idx] = [
-                                0, self.rng.uniform(0, self.height)]
+                    # Respawn the eaten boids at the screen edges
+                    self.positions[consume_idx] = self._edge_positions(n_eaten)
+                    for idx in consume_idx:
                         # Reset energy on respawn
                         self.energy[idx] = cfg.STAR_ENERGY_INITIAL
                         self.in_defensive[idx] = False
@@ -577,8 +566,8 @@ class BoidsSimulation:
             for pred in predators:
                 pdx = self.positions[:, 0] - pred.position[0]
                 pdy = self.positions[:, 1] - pred.position[1]
-                pdx -= self.width * np.round(pdx / self.width)
-                pdy -= self.height * np.round(pdy / self.height)
+                pdx = wrap_delta(pdx, self.width)
+                pdy = wrap_delta(pdy, self.height)
                 pdist = np.sqrt(pdx**2 + pdy**2).clip(1e-10)
                 # Only defensive boids within tangent radius
                 in_range = self.in_defensive & (pdist < cfg.DEFENSIVE_TANGENT_RADIUS)
@@ -660,39 +649,20 @@ class BoidsSimulation:
                 self.add_boids(spawn_n, frame_num)
                 # Evolve the newly added boids from fit parents
                 if cfg.EVOLUTION_ENABLED and self.per_boid_params:
-                    # Recompute distance matrix with new population size
-                    ps = self.positions.astype(np.float32)
-                    sdx = ps[:, np.newaxis, 0] - ps[np.newaxis, :, 0]
-                    sdy = ps[:, np.newaxis, 1] - ps[np.newaxis, :, 1]
-                    sdx -= np.float32(self.width) * np.round(
-                        sdx / np.float32(self.width))
-                    sdy -= np.float32(self.height) * np.round(
-                        sdy / np.float32(self.height))
-                    spawn_dist = np.sqrt(sdx * sdx + sdy * sdy)
+                    # Distances for the enlarged population
+                    _, _, spawn_dist = pairwise_offsets(
+                        self.positions, self.width, self.height)
                     all_alive = np.ones(self.num, dtype=bool)
                     fitness = self._compute_fitness(
                         all_alive, frame_num, spawn_dist)
                     for i in range(old_num, self.num):
-                        parent_a = self._select_parent(fitness, [])
-                        parent_b = self._select_parent(fitness, [])
+                        parent_a = self._select_parent(fitness)
+                        parent_b = self._select_parent(fitness)
                         if parent_a is None:
                             continue
                         if parent_b is None or parent_b == parent_a:
                             parent_b = parent_a
-                        eff_sigma = (cfg.MUTATION_SIGMA_FRAC
-                                     * self.mutation_sigma_mult)
-                        for fn, default, lo, hi in cfg.GENOME_FIELDS:
-                            arr = self.per_boid_params[fn]
-                            base = (arr[parent_a]
-                                    if self.rng.random() < 0.5
-                                    else arr[parent_b])
-                            sigma = abs(default) * eff_sigma
-                            arr[i] = np.clip(
-                                base + self.rng.normal(0, sigma), lo, hi)
-                        if fitness[parent_a] >= fitness[parent_b]:
-                            self.lineage_ids[i] = self.lineage_ids[parent_a]
-                        else:
-                            self.lineage_ids[i] = self.lineage_ids[parent_b]
+                        self._breed(i, parent_a, parent_b, fitness)
 
     # ----------------------------------------------------------
     # Evolution helpers
@@ -777,7 +747,21 @@ class BoidsSimulation:
         self._last_mean_fitness = float(total.mean()) if len(live) > 0 else 0.0
         return fitness
 
-    def _select_parent(self, fitness, dead_indices):
+    def _breed(self, child, parent_a, parent_b, fitness):
+        """Uniform crossover + Gaussian mutation into ``child``'s genome.
+
+        The child inherits the lineage of the fitter parent.
+        """
+        sigma_frac = cfg.MUTATION_SIGMA_FRAC * self.mutation_sigma_mult
+        for field_name, default, lo, hi in cfg.GENOME_FIELDS:
+            arr = self.per_boid_params[field_name]
+            base_val = arr[parent_a] if self.rng.random() < 0.5 else arr[parent_b]
+            arr[child] = np.clip(
+                base_val + self.rng.normal(0, abs(default) * sigma_frac), lo, hi)
+        fitter = parent_a if fitness[parent_a] >= fitness[parent_b] else parent_b
+        self.lineage_ids[child] = self.lineage_ids[fitter]
+
+    def _select_parent(self, fitness):
         """Tournament selection among living boids (fitness > -inf)."""
         alive_idx = np.where(fitness > -np.inf)[0]
         if len(alive_idx) == 0:
@@ -794,31 +778,15 @@ class BoidsSimulation:
             living_mask, frame_num, dist_matrix)
 
         for idx in dead_indices:
-            parent_a = self._select_parent(fitness, dead_indices)
+            parent_a = self._select_parent(fitness)
             if parent_a is None:
                 continue
-            parent_b = self._select_parent(fitness, dead_indices)
+            parent_b = self._select_parent(fitness)
             if parent_b is None or parent_b == parent_a:
-                parent_b = self._select_parent(fitness, dead_indices)
+                parent_b = self._select_parent(fitness)  # one retry
             if parent_b is None:
                 parent_b = parent_a  # fallback to cloning
-
-            # Uniform crossover + Gaussian mutation
-            effective_sigma = cfg.MUTATION_SIGMA_FRAC * self.mutation_sigma_mult
-            for field_name, default, lo, hi in cfg.GENOME_FIELDS:
-                arr = self.per_boid_params[field_name]
-                # 50/50 chance of taking from parent A or B
-                base_val = (arr[parent_a] if self.rng.random() < 0.5
-                            else arr[parent_b])
-                sigma = abs(default) * effective_sigma
-                child_val = base_val + self.rng.normal(0, sigma)
-                arr[idx] = np.clip(child_val, lo, hi)
-
-            # Lineage follows dominant (higher fitness) parent
-            if fitness[parent_a] >= fitness[parent_b]:
-                self.lineage_ids[idx] = self.lineage_ids[parent_a]
-            else:
-                self.lineage_ids[idx] = self.lineage_ids[parent_b]
+            self._breed(idx, parent_a, parent_b, fitness)
 
             # Decay mutation sigma
             self.selections += 1
@@ -855,21 +823,7 @@ class BoidsSimulation:
             cands_b = self.rng.choice(top_half, size=k, replace=False)
             parent_b = cands_b[np.argmax(fitness[cands_b])]
 
-            # Uniform crossover + mutate genome
-            effective_sigma = cfg.MUTATION_SIGMA_FRAC * self.mutation_sigma_mult
-            for field_name, default, lo, hi in cfg.GENOME_FIELDS:
-                arr = self.per_boid_params[field_name]
-                base_val = (arr[parent_a] if self.rng.random() < 0.5
-                            else arr[parent_b])
-                sigma = abs(default) * effective_sigma
-                child_val = base_val + self.rng.normal(0, sigma)
-                arr[idx] = np.clip(child_val, lo, hi)
-
-            # Lineage from dominant parent + reset birth frame
-            if fitness[parent_a] >= fitness[parent_b]:
-                self.lineage_ids[idx] = self.lineage_ids[parent_a]
-            else:
-                self.lineage_ids[idx] = self.lineage_ids[parent_b]
+            self._breed(idx, parent_a, parent_b, fitness)
             self.birth_frame[idx] = frame_num
 
     # ----------------------------------------------------------
@@ -885,51 +839,13 @@ class BoidsSimulation:
         rng = self.rng
         n = count
 
-        # All boids start at the explosion center
         new_pos = np.full((n, 2), [center_x, center_y], dtype=np.float64)
-
-        # Velocities: random directions radiating outward, varied speeds
         angles = rng.uniform(0, 2 * np.pi, n)
         speed = rng.uniform(self.params.max_speed * 0.4,
                             self.params.max_speed * 1.0, n)
         new_vel = np.column_stack([np.cos(angles) * speed,
                                    np.sin(angles) * speed])
-
-        self.positions = np.vstack([self.positions, new_pos])
-        self.velocities = np.vstack([self.velocities, new_vel])
-        self.phase_offsets = np.concatenate([
-            self.phase_offsets, rng.uniform(0, 1, n)])
-        self.speeds = np.concatenate([self.speeds, speed])
-
-        # Energy + collective state for explosion boids
-        self.energy = np.concatenate([
-            self.energy, np.full(n, cfg.STAR_ENERGY_INITIAL)])
-        self.in_defensive = np.concatenate([
-            self.in_defensive, np.zeros(n, dtype=bool)])
-        self.in_quorum = np.concatenate([
-            self.in_quorum, np.zeros(n, dtype=bool)])
-        self.quorum_neighbors = np.concatenate([
-            self.quorum_neighbors, np.zeros(n, dtype=np.int32)])
-
-        # Lineage: each new explosion boid gets a unique ID (wrapped to 0-999)
-        new_ids = np.arange(
-            self._next_lineage_id, self._next_lineage_id + n, dtype=np.int32) % 1000
-        self._next_lineage_id += n
-        self.lineage_ids = np.concatenate([self.lineage_ids, new_ids])
-        self.birth_frame = np.concatenate([
-            self.birth_frame, np.full(n, frame_num, dtype=np.int64)])
-
-        # Genome: initialize with small perturbation from defaults
-        if cfg.EVOLUTION_ENABLED and self.per_boid_params:
-            for field_name, default, lo, hi in cfg.GENOME_FIELDS:
-                sigma = abs(default) * cfg.MUTATION_SIGMA_FRAC
-                new_vals = default + rng.normal(0, sigma, n)
-                self.per_boid_params[field_name] = np.concatenate([
-                    self.per_boid_params[field_name],
-                    np.clip(new_vals, lo, hi)])
-
-        self.num += n
-        self._bh_dist = None
+        self._append_boids(new_pos, new_vel, speed, frame_num)
 
     def check_predator_starvation(self, predators, frame_num):
         """Check all predators for starvation, handle death + respawn.
@@ -976,21 +892,7 @@ class BoidsSimulation:
             pred.params = new_params
 
             # 3. Respawn at random screen edge
-            edge = rng.integers(0, 4)
-            if edge == 0:
-                pred.position = np.array(
-                    [rng.uniform(0, self.width), 0.0], dtype=np.float64)
-            elif edge == 1:
-                pred.position = np.array(
-                    [float(self.width), rng.uniform(0, self.height)],
-                    dtype=np.float64)
-            elif edge == 2:
-                pred.position = np.array(
-                    [rng.uniform(0, self.width), float(self.height)],
-                    dtype=np.float64)
-            else:
-                pred.position = np.array(
-                    [0.0, rng.uniform(0, self.height)], dtype=np.float64)
+            pred.position = self._edge_positions(1)[0]
 
             # Reset velocity toward center
             center = np.array([self.width / 2, self.height / 2])
@@ -1102,8 +1004,8 @@ class BlackHolePredator:
 
         dx = boid_positions[:, 0] - self.position[0]
         dy = boid_positions[:, 1] - self.position[1]
-        dx -= self.width * np.round(dx / self.width)
-        dy -= self.height * np.round(dy / self.height)
+        dx = wrap_delta(dx, self.width)
+        dy = wrap_delta(dy, self.height)
         dist = np.sqrt(dx ** 2 + dy ** 2).clip(1e-10)
 
         # Target: weighted centroid of visible boids
@@ -1163,8 +1065,8 @@ class BlackHolePredator:
             for other in other_predators:
                 sep_dx = self.position[0] - other.position[0]
                 sep_dy = self.position[1] - other.position[1]
-                sep_dx -= self.width * np.round(sep_dx / self.width)
-                sep_dy -= self.height * np.round(sep_dy / self.height)
+                sep_dx = wrap_delta(sep_dx, self.width)
+                sep_dy = wrap_delta(sep_dy, self.height)
                 sep_dist = np.sqrt(sep_dx ** 2 + sep_dy ** 2) + 1e-10
                 if sep_dist < pp.separation_radius:
                     sep_t = 1.0 - sep_dist / pp.separation_radius
