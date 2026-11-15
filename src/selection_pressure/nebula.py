@@ -53,6 +53,11 @@ class NebulaField:
         self._drift_change_interval = 600  # frames between direction tweaks
         self._drift_frame = 0
 
+    def resize(self, width, height):
+        """Rescale cloud positions to a new canvas size."""
+        self.positions *= (width / self.width, height / self.height)
+        self.width, self.height = width, height
+
     def get_density_at(self, positions):
         """Return (N,) density experienced by each boid position.
 

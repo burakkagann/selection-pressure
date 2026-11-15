@@ -150,6 +150,14 @@ class BoidsSimulation:
             return self.per_boid_params[name]
         return getattr(self.params, name)
 
+    def resize(self, width, height):
+        """Rescale the world to a new canvas size, keeping relative positions."""
+        self.positions *= (width / self.width, height / self.height)
+        if self.nebula is not None:
+            self.nebula.resize(width, height)
+        self.width, self.height = width, height
+        self._bh_dist = None
+
     def add_boids(self, count, frame_num=0):
         """Add new boids at random edge positions without resetting."""
         rng = self.rng
@@ -1077,13 +1085,18 @@ class BlackHolePredator:
         # Accretion hunger: mass that grows/shrinks with feeding
         self.mass = cfg.BH_MASS_INITIAL
 
+    def resize(self, width, height):
+        """Rescale the predator position to a new canvas size."""
+        self.position *= (width / self.width, height / self.height)
+        self.width, self.height = width, height
+
     def _mass_scale(self, exponent):
         """Return mass^exponent if accretion hunger is enabled, else 1.0."""
         if cfg.ACCRETION_HUNGER_ENABLED:
             return self.mass ** exponent
         return 1.0
 
-    def step(self, boid_positions, other_predators=None, sim=None):
+    def step(self, boid_positions, other_predators=None):
         """Move toward nearest dense cluster, with lunge bursts."""
         pp = self.params
 

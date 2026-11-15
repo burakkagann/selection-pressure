@@ -1,531 +1,426 @@
 """
-SELECTION PRESSURE - Galaxy Simulation (pygame)
+SELECTION PRESSURE - application loop.
 
-Live galaxy simulation with evolving stars and black holes.
-Exhibition installation with real-time evolutionary dynamics.
-
-Controls:
-    ESC / Q         Quit
-    SPACE           Pause / resume simulation
-    R               Reset simulation with current seed
-    S               Save current frame as PNG
-    F               Toggle fullscreen
-    H               Toggle help overlay
-    +/-             Adjust number of stars (+/- 50)
-    [ / ]           Remove / add black hole (1-3)
-
-Author: Burak Kagan (Pixels2GenAI Project)
-Date: 2026-02-19
+Owns the window, input handling and the per-frame pipeline:
+simulate -> draw into the persistent trail surface -> composite -> overlays.
+Simulation logic lives in ``simulation.py``; drawing in ``rendering.py`` and
+``hud.py``.
 """
 
-import sys
-import os
+from __future__ import annotations
+
 import time
-import ctypes
-import numpy as np
+from dataclasses import dataclass
+from pathlib import Path
 
-# --- Windows DPI Awareness (MUST run before pygame.init) ---
-# Without this, Windows scales coordinates and pygame gets logical pixels
-# instead of physical pixels, causing fullscreen/projector mismatches.
-try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 2 = per-monitor aware
-except (AttributeError, OSError):
-    try:
-        ctypes.windll.user32.SetProcessDPIAware()  # fallback for older Windows
-    except (AttributeError, OSError):
-        pass
+import pygame
 
-# Hide the console window to prevent it from stealing focus during exhibition
-try:
-    hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-    if hwnd:
-        ctypes.windll.user32.ShowWindow(hwnd, 6)  # 6 = SW_MINIMIZE
-except (AttributeError, OSError):
-    pass
-
-try:
-    import pygame
-except ImportError:
-    print("ERROR: pygame not found. Install with: pip install pygame")
-    sys.exit(1)
-
-from . import background, config, rendering
+from . import background, config, display, hud, rendering
 from .simulation import BlackHolePredator, BoidsSimulation
 
+MAX_BLACK_HOLES = 3
+MIN_BLACK_HOLES = 1
+MAX_STARS = 2000
+MIN_STARS = 10
+STAR_STEP = 50
+HELP_DISPLAY_SECS = 5   # help overlay stays fully visible this long
+HELP_FADE_SPEED = 3     # alpha lost per frame while fading out
+COLOR_CYCLE_SECS = 30   # palette cycle length used by the boid colouring
+
+
+@dataclass
+class Options:
+    """Runtime options, normally built by ``cli.parse_args``."""
+
+    display: str = "primary"
+    windowed: bool = False
+    window_size: tuple[int, int] | None = None
+    seed: int = config.SEED
+    stars: int = config.NUM_BOIDS
+    black_holes: int = config.NUM_BLACK_HOLES
+    fps: int = config.TARGET_FPS
+    frames: int | None = None
+    show_hud: bool = True
+    kiosk: bool = False
+    profile: bool = False
+    screenshot_dir: Path = Path(".")
 
 
 # ============================================================
-# FRAME PROFILER
+# Factories
 # ============================================================
 
-class FrameProfiler:
-    """Lightweight per-frame timing that prints summaries periodically."""
-    __slots__ = ('_timings', '_count', '_t0', '_label', '_interval')
-
-    def __init__(self, interval=120):
-        self._timings = {}
-        self._count = 0
-        self._t0 = 0.0
-        self._label = ''
-        self._interval = interval
-
-    def begin(self, label):
-        self._label = label
-        self._t0 = time.perf_counter()
-
-    def end(self):
-        dt = time.perf_counter() - self._t0
-        self._timings[self._label] = (
-            self._timings.get(self._label, 0.0) + dt)
-
-    def tick(self):
-        """Call once per frame.  Prints and resets every _interval frames."""
-        self._count += 1
-        if self._count < self._interval:
-            return
-        total = sum(self._timings.values())
-        n = self._count
-        print(f"\n  [PROFILE] avg over {n} frames "
-              f"({total / n * 1000:.1f} ms/frame):")
-        for label, t in sorted(
-                self._timings.items(), key=lambda x: -x[1]):
-            avg = t / n * 1000
-            pct = t / total * 100 if total > 0 else 0
-            print(f"    {label:<24} {avg:6.2f} ms  ({pct:4.1f}%)")
-        print()
-        self._timings.clear()
-        self._count = 0
-
-
-# ============================================================
-# HELPERS
-# ============================================================
-
-def make_sim():
-    """Create a BoidsSimulation reflecting current config toggle state."""
+def make_sim(width, height, num_stars=None, seed=None):
+    """Create a BoidsSimulation using the current config toggles."""
     sim = BoidsSimulation(
-        config.NUM_BOIDS, config.WIDTH, config.HEIGHT, config.SEED)
-    # Sync runtime-toggled params that may differ from class defaults
+        config.NUM_BOIDS if num_stars is None else num_stars,
+        width, height, config.SEED if seed is None else seed)
     sim.params.attractor_enabled = config.ATTRACTOR_ENABLED
     sim.params.noise_influence = config.NOISE_INFLUENCE
     return sim
 
 
-def make_predators():
-    """Spawn predators at evenly spaced corner positions."""
-    if not config.BLACK_HOLE_ENABLED or config.NUM_BLACK_HOLES <= 0:
+def _spawn_point(index, width, height):
+    corners = [(0.25, 0.25), (0.75, 0.75), (0.75, 0.25), (0.25, 0.75)]
+    fx, fy = corners[index % len(corners)]
+    return width * fx, height * fy
+
+
+def make_predator(index, width, height):
+    """Create the ``index``-th black hole at its fixed spawn corner."""
+    return BlackHolePredator(width, height,
+                             start_pos=_spawn_point(index, width, height),
+                             seed=123 + index)
+
+
+def make_predators(width, height, count=None):
+    """Create ``count`` black holes (config default when None)."""
+    count = config.NUM_BLACK_HOLES if count is None else count
+    if not config.BLACK_HOLE_ENABLED or count <= 0:
         return []
-    corners = [
-        (config.WIDTH * 0.25, config.HEIGHT * 0.25),
-        (config.WIDTH * 0.75, config.HEIGHT * 0.75),
-        (config.WIDTH * 0.75, config.HEIGHT * 0.25),
-        (config.WIDTH * 0.25, config.HEIGHT * 0.75),
-    ]
-    preds = []
-    for i in range(config.NUM_BLACK_HOLES):
-        pos = corners[i % len(corners)]
-        preds.append(BlackHolePredator(
-            config.WIDTH, config.HEIGHT, start_pos=pos, seed=123 + i))
-    return preds
+    return [make_predator(i, width, height) for i in range(count)]
 
 
 # ============================================================
-# MAIN
+# Profiler
 # ============================================================
 
-def main():
-    pygame.init()
+class FrameProfiler:
+    """Per-section frame timing, printed every ``interval`` frames."""
 
-    # ---- Detect monitors with actual pixel positions (Windows API) ----
-    # desktop_sizes only gives (w, h) per monitor — no position info.
-    # We need the real x,y so we can place the window on the correct screen.
-    monitor_rects = []  # list of (x, y, w, h) in physical pixels
-    try:
-        import ctypes.wintypes
-        MONITORENUMPROC = ctypes.WINFUNCTYPE(
-            ctypes.c_bool,
-            ctypes.c_ulong, ctypes.c_ulong,
-            ctypes.POINTER(ctypes.wintypes.RECT), ctypes.c_double)
+    def __init__(self, enabled, interval=120):
+        self.enabled = enabled
+        self._interval = interval
+        self._timings = {}
+        self._count = 0
+        self._label = ""
+        self._t0 = 0.0
 
-        def _enum_cb(hMon, hdc, lprc, data):
-            r = lprc.contents
-            monitor_rects.append((r.left, r.top,
-                                  r.right - r.left, r.bottom - r.top))
-            return True
+    def begin(self, label):
+        if self.enabled:
+            self._label = label
+            self._t0 = time.perf_counter()
 
-        ctypes.windll.user32.EnumDisplayMonitors(
-            None, None, MONITORENUMPROC(_enum_cb), 0)
-    except Exception:
-        pass
+    def end(self):
+        if self.enabled:
+            dt = time.perf_counter() - self._t0
+            self._timings[self._label] = self._timings.get(self._label, 0.0) + dt
 
-    # Fallback: use pygame sizes at (0,0) if Windows API failed
-    if not monitor_rects:
-        desktop_sizes = pygame.display.get_desktop_sizes()
-        monitor_rects = [(0, 0, w, h) for w, h in desktop_sizes]
+    def tick(self):
+        if not self.enabled:
+            return
+        self._count += 1
+        if self._count < self._interval:
+            return
+        total = sum(self._timings.values())
+        print(f"\n  [PROFILE] avg over {self._count} frames "
+              f"({total / self._count * 1000:.1f} ms/frame):")
+        for label, t in sorted(self._timings.items(), key=lambda x: -x[1]):
+            pct = t / total * 100 if total > 0 else 0
+            print(f"    {label:<24} {t / self._count * 1000:6.2f} ms  ({pct:4.1f}%)")
+        self._timings.clear()
+        self._count = 0
 
-    print()
-    print(f"  Monitors detected: {len(monitor_rects)}")
-    for i, (mx, my, mw, mh) in enumerate(monitor_rects):
-        primary = " (primary)" if (mx == 0 and my == 0) else ""
-        print(f"    [{i}] {mw}x{mh} at ({mx},{my}){primary}")
 
-    # ---- Choose target display ----
-    # SP_DISPLAY env var: 0, 1, 2... to pick explicitly.
-    # Default: pick the non-primary monitor (the projector).
-    display_override = os.environ.get('SP_DISPLAY')
-    if display_override is not None:
-        target_display = int(display_override)
-    elif len(monitor_rects) > 1:
-        # Pick the best projector candidate: non-primary, landscape, largest
-        non_primary = [
-            (i, mx, my, mw, mh) for i, (mx, my, mw, mh)
-            in enumerate(monitor_rects) if mx != 0 or my != 0]
-        # Prefer landscape (w >= h), then largest area
-        non_primary.sort(key=lambda m: (m[3] >= m[4], m[3] * m[4]),
-                         reverse=True)
-        target_display = non_primary[0][0] if non_primary else 0
-    else:
-        target_display = 0
+# ============================================================
+# Application
+# ============================================================
 
-    tx, ty, tw, th = monitor_rects[target_display]
-    config.WIDTH = tw
-    config.HEIGHT = th
-    print(f"  -> Target: display [{target_display}] "
-          f"{tw}x{th} at ({tx},{ty})")
-    print(f"     (override with: set SP_DISPLAY=0  or  set SP_DISPLAY=1)")
-    print()
+class App:
+    """The running installation: window, world state and frame loop."""
 
-    # Position SDL window at the target monitor's top-left corner
-    os.environ['SDL_VIDEO_WINDOW_POS'] = f"{tx},{ty}"
+    def __init__(self, options: Options):
+        self.opts = options
+        self.seed = options.seed
+        self.initial_stars = options.stars
+        self.initial_black_holes = options.black_holes
+        self.prof = FrameProfiler(options.profile)
 
-    # Borderless fullscreen window — stays visible when interacting with other
-    # monitors (unlike exclusive FULLSCREEN which minimizes on focus loss).
-    # Critical for exhibition: piece on projector + other apps on main screen.
-    screen = pygame.display.set_mode((config.WIDTH, config.HEIGHT),
-                                     pygame.NOFRAME)
-    # Verify actual surface size matches what we asked for
-    actual_w, actual_h = screen.get_size()
-    if (actual_w, actual_h) != (config.WIDTH, config.HEIGHT):
-        print(f"  WARNING: Requested {config.WIDTH}x{config.HEIGHT} "
-              f"but got {actual_w}x{actual_h} — adjusting")
-        config.WIDTH = actual_w
-        config.HEIGHT = actual_h
+        if options.kiosk:
+            display.minimize_console()
+        self.screen = self._open_window()
+        pygame.display.set_caption("SELECTION PRESSURE [SPACE=pause, R=reset, H=help]")
+        self.clock = pygame.time.Clock()
 
-    pygame.display.set_caption(
-        "SELECTION PRESSURE [SPACE=pause, R=reset, H=help]")
-    clock = pygame.time.Clock()
+        self.font_hud = pygame.font.SysFont("consolas", 20)
+        self.font_title = pygame.font.SysFont("consolas", 28, bold=True)
+        self.lens_maps = rendering.precompute_lens_maps()
 
-    # Cache fonts once (avoids per-frame SysFont overhead)
-    font_hud = pygame.font.SysFont('consolas', 20)
-    font_help_title = pygame.font.SysFont('consolas', 28, bold=True)
-    font_help = pygame.font.SysFont('consolas', 20)
+        self._create_surfaces()
+        self.reset()
 
-    # The trail surface holds persistent pixel data
-    trail_surface = pygame.Surface((config.WIDTH, config.HEIGHT))
-    trail_surface.fill((0, 0, 0))
+        self.running = True
+        self.paused = False
+        self.screenshot_count = 0
+        self.show_help = True
+        self.help_alpha = 255
+        self.help_auto_fade = True
 
-    # Temporary surface for additive boid drawing (cleared each frame)
-    boid_layer = pygame.Surface((config.WIDTH, config.HEIGHT))
-    boid_layer.set_colorkey((0, 0, 0))  # black = transparent for blit
+    # ---- window and surfaces ------------------------------------------
 
-    sim = make_sim()
+    def _open_window(self):
+        monitors = display.list_monitors()
+        index = display.choose_display(monitors, self.opts.display)
+        self.monitor = monitors[index]
+        x, y, w, h = self.monitor
+        print(f"  Display [{index}] {w}x{h} at ({x},{y}) "
+              f"of {len(monitors)} monitor(s)")
 
-    predators = make_predators()
+        if self.opts.windowed:
+            self.fullscreen = False
+            size = self.opts.window_size or (int(w * 0.8), int(h * 0.8))
+            display.place_window(x + (w - size[0]) // 2, y + (h - size[1]) // 2)
+            return pygame.display.set_mode(size, pygame.RESIZABLE)
 
-    # Galaxy background (precomputed — zero per-frame rendering cost)
-    galaxy_bg = None
-    twinkle_data = None
-    twinkle_overlay = None
-    if config.GALAXY_BG_ENABLED:
-        galaxy_bg, twinkle_data = background.generate_galaxy_background(
-            config.WIDTH, config.HEIGHT, seed=config.SEED)
-        if config.TWINKLE_ENABLED and twinkle_data:
-            twinkle_overlay = pygame.Surface((config.WIDTH, config.HEIGHT))
-            twinkle_overlay.set_colorkey((0, 0, 0))
+        # Borderless window covering the monitor: unlike exclusive
+        # fullscreen it stays visible when another screen has focus.
+        self.fullscreen = True
+        display.place_window(x, y)
+        return pygame.display.set_mode((w, h), pygame.NOFRAME)
 
-    # Precompute gravitational lensing displacement maps
-    lens_maps = rendering.precompute_lens_maps()
+    @property
+    def size(self):
+        return self.screen.get_size()
 
-    # Predator explosion effects (starvation death visuals)
-    predator_explosions = []
-    predator_starvation_total = 0  # lifetime count for panel display
+    def _create_surfaces(self):
+        w, h = self.size
+        self.trail_surface = pygame.Surface((w, h))
+        self.trail_surface.fill((0, 0, 0))
+        self.boid_layer = pygame.Surface((w, h))
+        self.boid_layer.set_colorkey((0, 0, 0))
 
-    running = True
-    paused = False
-    fullscreen = True
-    frame = 0
-    wall_start = time.monotonic()
-    wall_paused_total = 0.0       # accumulated pause duration
-    wall_pause_begin = None       # set when pause starts
-    screenshot_count = 0
+        self.galaxy_bg = self.twinkle_data = self.twinkle_overlay = None
+        if config.GALAXY_BG_ENABLED:
+            self.galaxy_bg, self.twinkle_data = background.generate_galaxy_background(
+                w, h, seed=self.seed)
+            if config.TWINKLE_ENABLED and self.twinkle_data:
+                self.twinkle_overlay = pygame.Surface((w, h))
+                self.twinkle_overlay.set_colorkey((0, 0, 0))
 
-    # Help overlay state
-    show_help = True            # visible on startup
-    help_alpha = 255            # current opacity (0-255)
-    help_auto_fade = True       # auto-fade after startup display
+    def reset(self):
+        """Restart the world with the initial star and black hole counts."""
+        w, h = self.size
+        self.sim = make_sim(w, h, self.initial_stars, self.seed)
+        self.predators = make_predators(w, h, self.initial_black_holes)
+        self.trail_surface.fill((0, 0, 0))
+        self.frame = 0
+        self.wall_start = time.monotonic()
+        self.wall_paused_total = 0.0
+        self.wall_pause_begin = None
+        self.predator_explosions = []
+        self.starvation_total = 0
 
-    HELP_DISPLAY_SECS = 5       # seconds before auto-fade begins
-    HELP_FADE_SPEED = 3         # alpha decrease per frame during fade-out
+    def toggle_fullscreen(self):
+        x, y, w, h = self.monitor
+        self.fullscreen = not self.fullscreen
+        if self.fullscreen:
+            display.place_window(x, y)
+            self.screen = pygame.display.set_mode((w, h), pygame.NOFRAME)
+        else:
+            self.screen = pygame.display.set_mode(
+                (int(w * 0.8), int(h * 0.8)), pygame.RESIZABLE)
+        self._on_resize()
 
-    # Estimate total frames for color cycling (30s default cycle)
-    total_frames_est = config.TARGET_FPS * 30
+    def _on_resize(self):
+        w, h = self.size
+        self._create_surfaces()
+        self.sim.resize(w, h)
+        for pred in self.predators:
+            pred.resize(w, h)
+        print(f"  [DISPLAY] {w}x{h} {'fullscreen' if self.fullscreen else 'windowed'}")
 
-    print()
-    print("  SELECTION PRESSURE - Galaxy Simulation")
-    print("  ======================================")
-    print(f"  Resolution: {config.WIDTH}x{config.HEIGHT}")
-    print(f"  Stars: {config.NUM_BOIDS}")
-    print()
-    print("  Controls:")
-    print("    ESC/Q = Quit    SPACE = Pause    R = Reset")
-    print("    +/- = Stars     F = Fullscreen   S = Screenshot")
-    print("    [/] = BH count  H = Help overlay")
-    prof = FrameProfiler(interval=120)  # report every 2s at 60 FPS
+    # ---- input --------------------------------------------------------
 
-    print()
+    def handle_event(self, event):
+        if event.type == pygame.QUIT:
+            self.running = False
+        elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
+            self.screen = pygame.display.get_surface()
+            self._on_resize()
+        elif event.type == pygame.KEYDOWN:
+            self.handle_key(event.key)
 
-    while running:
-        # --- Event handling ---
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+    def handle_key(self, key):
+        if key in (pygame.K_ESCAPE, pygame.K_q):
+            self.running = False
+        elif key == pygame.K_SPACE:
+            self.toggle_pause()
+        elif key == pygame.K_r:
+            self.reset()
+            print(f"  [RESET] {self.sim.num} stars, seed={self.seed}")
+        elif key == pygame.K_f:
+            self.toggle_fullscreen()
+        elif key == pygame.K_h:
+            self.show_help = not self.show_help
+            self.help_alpha = 255
+            self.help_auto_fade = False
+        elif key == pygame.K_s:
+            self.save_screenshot()
+        elif key == pygame.K_RIGHTBRACKET:
+            self.add_black_hole()
+        elif key == pygame.K_LEFTBRACKET:
+            self.remove_black_hole()
+        elif key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+            add = min(STAR_STEP, MAX_STARS - self.sim.num)
+            if add > 0:
+                self.sim.add_boids(add, self.frame)
+            print(f"  [STARS] {self.sim.num}")
+        elif key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+            self.sim.remove_boids(min(STAR_STEP, self.sim.num - MIN_STARS))
+            print(f"  [STARS] {self.sim.num}")
 
-            elif event.type == pygame.KEYDOWN:
-                if event.key in (pygame.K_ESCAPE, pygame.K_q):
-                    running = False
+    def toggle_pause(self):
+        self.paused = not self.paused
+        if self.paused:
+            self.wall_pause_begin = time.monotonic()
+        elif self.wall_pause_begin is not None:
+            self.wall_paused_total += time.monotonic() - self.wall_pause_begin
+            self.wall_pause_begin = None
+        print(f"  [{'PAUSED' if self.paused else 'RUNNING'}]")
 
-                elif event.key == pygame.K_SPACE:
-                    paused = not paused
-                    if paused:
-                        wall_pause_begin = time.monotonic()
-                    elif wall_pause_begin is not None:
-                        wall_paused_total += time.monotonic() - wall_pause_begin
-                        wall_pause_begin = None
-                    state = "PAUSED" if paused else "RUNNING"
-                    print(f"  [{state}]")
+    def add_black_hole(self):
+        if config.BLACK_HOLE_ENABLED and len(self.predators) < MAX_BLACK_HOLES:
+            self.predators.append(make_predator(len(self.predators), *self.size))
+        print(f"  [BLACK HOLES] {len(self.predators)}")
 
-                elif event.key == pygame.K_r:
-                    sim = make_sim()
-                    predators = make_predators()
-                    trail_surface.fill((0, 0, 0))
-                    frame = 0
-                    wall_start = time.monotonic()
-                    wall_paused_total = 0.0
-                    wall_pause_begin = None
-                    if config.GALAXY_BG_ENABLED:
-                        galaxy_bg, twinkle_data = (
-                            background.generate_galaxy_background(
-                                config.WIDTH, config.HEIGHT,
-                                seed=config.SEED))
-                    predator_explosions = []
-                    predator_starvation_total = 0
-                    print(f"  [RESET] {config.NUM_BOIDS} stars,"
-                          f" seed={config.SEED}")
+    def remove_black_hole(self):
+        if len(self.predators) > MIN_BLACK_HOLES:
+            self.predators.pop()
+        print(f"  [BLACK HOLES] {len(self.predators)}")
 
-                elif event.key == pygame.K_f:
-                    fullscreen = not fullscreen
-                    if fullscreen:
-                        config.WIDTH = tw
-                        config.HEIGHT = th
-                        os.environ['SDL_VIDEO_WINDOW_POS'] = f"{tx},{ty}"
-                        screen = pygame.display.set_mode(
-                            (config.WIDTH, config.HEIGHT),
-                            pygame.NOFRAME)
-                    else:
-                        # Windowed at 80% of target resolution
-                        win_w = int(tw * 0.8)
-                        win_h = int(th * 0.8)
-                        screen = pygame.display.set_mode(
-                            (win_w, win_h), pygame.RESIZABLE)
-                        config.WIDTH, config.HEIGHT = screen.get_size()
-                    # Recreate surfaces to match new screen dimensions
-                    trail_surface = pygame.Surface(
-                        (config.WIDTH, config.HEIGHT))
-                    trail_surface.fill((0, 0, 0))
-                    boid_layer = pygame.Surface(
-                        (config.WIDTH, config.HEIGHT))
-                    boid_layer.set_colorkey((0, 0, 0))
-                    if config.GALAXY_BG_ENABLED:
-                        galaxy_bg, twinkle_data = (
-                            background.generate_galaxy_background(
-                                config.WIDTH, config.HEIGHT,
-                                seed=config.SEED))
-                        if config.TWINKLE_ENABLED and twinkle_data:
-                            twinkle_overlay = pygame.Surface(
-                                (config.WIDTH, config.HEIGHT))
-                            twinkle_overlay.set_colorkey((0, 0, 0))
-                    print(f"  [DISPLAY] {config.WIDTH}x{config.HEIGHT}"
-                          f" {'fullscreen' if fullscreen else 'windowed'}")
+    def save_screenshot(self):
+        """Save the trail layer (the artwork without overlays) as a PNG."""
+        out_dir = self.opts.screenshot_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        while True:
+            self.screenshot_count += 1
+            path = out_dir / f"sp_screenshot_{self.screenshot_count:03d}.png"
+            if not path.exists():
+                break
+        pygame.image.save(self.trail_surface, str(path))
+        print(f"  [SAVED] {path}")
 
-                elif event.key == pygame.K_h:
-                    show_help = not show_help
-                    help_alpha = 255
-                    help_auto_fade = False  # manual toggle cancels auto-fade
+    # ---- frame --------------------------------------------------------
 
-                elif event.key == pygame.K_s:
-                    screenshot_count += 1
-                    path = os.path.join(
-                        config.SCRIPT_DIR,
-                        f"sp_screenshot_{screenshot_count:03d}.png")
-                    pygame.image.save(trail_surface, path)
-                    print(f"  [SAVED] {path}")
+    def elapsed_seconds(self):
+        """Wall-clock time since the last reset, excluding pauses."""
+        now = time.monotonic()
+        paused_now = now - self.wall_pause_begin if self.wall_pause_begin else 0.0
+        return now - self.wall_start - self.wall_paused_total - paused_now
 
-                elif event.key == pygame.K_RIGHTBRACKET:
-                    # Add a black hole (max 3)
-                    if len(predators) < 3:
-                        corners = [
-                            (config.WIDTH * 0.25, config.HEIGHT * 0.25),
-                            (config.WIDTH * 0.75, config.HEIGHT * 0.75),
-                            (config.WIDTH * 0.75, config.HEIGHT * 0.25),
-                        ]
-                        idx = len(predators)
-                        pos = corners[idx % len(corners)]
-                        predators.append(BlackHolePredator(
-                            config.WIDTH, config.HEIGHT,
-                            start_pos=pos, seed=123 + idx))
-                        config.NUM_BLACK_HOLES = len(predators)
-                    print(f"  [BLACK HOLES] {len(predators)}")
+    def step(self):
+        """Advance the simulation by one frame (no-op while paused)."""
+        if self.paused:
+            return
+        predators = self.predators if config.BLACK_HOLE_ENABLED else []
+        for pred in predators:
+            pred.step(self.sim.positions, [p for p in predators if p is not pred])
+        self.sim.step(self.frame, predators or None)
 
-                elif event.key == pygame.K_LEFTBRACKET:
-                    # Remove a black hole (min 1)
-                    if len(predators) > 1:
-                        predators.pop()
-                        config.NUM_BLACK_HOLES = len(predators)
-                    print(f"  [BLACK HOLES] {len(predators)}")
+        if predators and config.PREDATOR_EVOLUTION_ENABLED:
+            explosions = self.sim.check_predator_starvation(predators, self.frame)
+            self.predator_explosions.extend(explosions)
+            self.starvation_total += len(explosions)
+        self.frame += 1
 
-                elif event.key in (pygame.K_PLUS, pygame.K_EQUALS,
-                                   pygame.K_KP_PLUS):
-                    add_n = min(50, 2000 - sim.num)
-                    if add_n > 0:
-                        sim.add_boids(add_n, frame)
-                        config.NUM_BOIDS = sim.num
-                    print(f"  [STARS] {sim.num}")
+    def draw(self):
+        """Render one frame onto the screen."""
+        screen, trail, prof = self.screen, self.trail_surface, self.prof
+        sim, predators, frame = self.sim, self.predators, self.frame
 
-                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                    remove_n = min(50, sim.num - 10)
-                    if remove_n > 0:
-                        sim.remove_boids(remove_n)
-                        config.NUM_BOIDS = sim.num
-                    print(f"  [STARS] {sim.num}")
-
-        # --- Simulation step ---
-        prof.begin('simulation')
-        if not paused:
-            if config.BLACK_HOLE_ENABLED:
-                for pred in predators:
-                    others = [p for p in predators if p is not pred]
-                    pred.step(sim.positions, others, sim=sim)
-            sim.step(frame,
-                     predators if config.BLACK_HOLE_ENABLED else None)
-
-            # Check predator starvation (after step so kill resets are current)
-            if config.BLACK_HOLE_ENABLED and config.PREDATOR_EVOLUTION_ENABLED:
-                new_explosions = sim.check_predator_starvation(
-                    predators, frame)
-                if new_explosions:
-                    predator_explosions.extend(new_explosions)
-                    predator_starvation_total += len(new_explosions)
-
-            frame += 1
+        prof.begin("fade_trails")
+        rendering.fade_trails(trail)
         prof.end()
 
-        # --- Render trails (per-channel fade for color-shifting trails) ---
-        prof.begin('fade_trails')
-        rendering.fade_trails(trail_surface)
+        prof.begin("draw_boids")
+        if not self.paused or frame == 0:
+            rendering.draw_boids(self.boid_layer, trail, sim, frame,
+                                 config.TARGET_FPS * COLOR_CYCLE_SECS, predators)
         prof.end()
 
-        # --- Draw boid dots ---
-        prof.begin('draw_boids')
-        if not paused or frame == 0:
-            rendering.draw_boids(
-                boid_layer, trail_surface, sim, frame, total_frames_est,
-                predators)
+        prof.begin("draw_black_holes")
+        rendering.draw_black_holes(trail, predators, frame)
         prof.end()
 
-        # --- Black hole visual effects ---
-        prof.begin('draw_black_holes')
-        rendering.draw_black_holes(trail_surface, predators, frame)
-        prof.end()
-
-        # --- Evolution birth flashes (cyan ring at respawn points) ---
         if config.EVOLUTION_ENABLED and sim.birth_flashes:
-            rendering.draw_birth_flashes(trail_surface, sim.birth_flashes)
+            rendering.draw_birth_flashes(trail, sim.birth_flashes)
+        if self.predator_explosions:
+            rendering.draw_predator_explosions(trail, self.predator_explosions)
 
-        # --- Predator explosion effects (starvation death visuals) ---
-        if predator_explosions:
-            rendering.draw_predator_explosions(
-                trail_surface, predator_explosions)
-
-        # --- Display compositing ---
-        prof.begin('composite_display')
-        rendering.composite_display(
-            screen, trail_surface, galaxy_bg, twinkle_overlay,
-            twinkle_data, frame)
+        prof.begin("composite_display")
+        rendering.composite_display(screen, trail, self.galaxy_bg, self.twinkle_overlay,
+                                    self.twinkle_data, frame)
         prof.end()
 
-        # --- Nebula resource clouds (behind trails, above galaxy BG) ---
         if config.NEBULA_FIELDS_ENABLED and sim.nebula is not None:
             rendering.draw_nebula_clouds(screen, sim.nebula, frame)
-
-        # --- Black hole void (opaque on final screen) ---
         rendering.stamp_void_on_screen(screen, predators)
 
-        # --- Bloom ---
-        prof.begin('apply_bloom')
-        rendering.apply_bloom(screen, trail_surface)
+        prof.begin("apply_bloom")
+        rendering.apply_bloom(screen, trail)
         prof.end()
 
-        # --- Gravitational lensing ---
-        prof.begin('apply_lensing')
-        rendering.apply_lensing(screen, predators, lens_maps)
+        prof.begin("apply_lensing")
+        rendering.apply_lensing(screen, predators, self.lens_maps)
         prof.end()
 
-        # --- HUD ---
-        prof.begin('hud_and_overlays')
-        actual_fps = clock.get_fps()
-        # Wall-clock elapsed (excludes paused time)
-        now = time.monotonic()
-        pause_adj = (now - wall_pause_begin) if wall_pause_begin else 0.0
-        wall_elapsed = now - wall_start - wall_paused_total - pause_adj
-        rendering.render_hud(
-            screen, font_hud, sim, frame, predators,
-            actual_fps)
+        prof.begin("overlays")
+        self._draw_overlays()
+        prof.end()
 
-        # --- Elapsed time (bottom-right) ---
-        rendering.render_elapsed_time(screen, wall_elapsed)
-
-        # --- Participant hint (bottom-center) ---
-        rendering.render_participant_hint(screen)
-
-        # --- Evolution panel (bottom-left, unified boid + predator) ---
+    def _draw_overlays(self):
+        screen, sim = self.screen, self.sim
+        if self.opts.show_hud:
+            hud.render_hud(screen, self.font_hud, sim, self.frame, self.predators,
+                           self.clock.get_fps())
+            hud.render_elapsed_time(screen, self.elapsed_seconds())
+            hud.render_participant_hint(screen)
         if config.EVOLUTION_ENABLED:
-            rendering.render_evolution_panel(
-                screen, font_help_title, font_hud, sim, frame,
-                predators=predators,
-                starvation_events_total=predator_starvation_total)
+            hud.render_evolution_panel(screen, self.font_title, self.font_hud, sim,
+                                       self.frame, predators=self.predators,
+                                       starvation_events_total=self.starvation_total)
+        if self.show_help and self.help_alpha > 0:
+            w, h = self.size
+            hud.draw_help_overlay(screen, self.help_alpha, self.font_title, self.font_hud,
+                                  w, h, sim.num, len(self.predators))
 
-        # --- Help overlay ---
-        if show_help and help_alpha > 0:
-            rendering.draw_help_overlay(
-                screen, help_alpha, font_help_title,
-                font_help, config.WIDTH, config.HEIGHT)
-        prof.end()
+        # Startup help fades out on its own after a few seconds.
+        if self.help_auto_fade and self.show_help and \
+                self.frame > HELP_DISPLAY_SECS * config.TARGET_FPS:
+            self.help_alpha = max(0, self.help_alpha - HELP_FADE_SPEED)
+            if self.help_alpha <= 0:
+                self.show_help = self.help_auto_fade = False
 
-        # Auto-fade: after HELP_DISPLAY_SECS, gradually reduce opacity
-        if help_auto_fade and show_help:
-            if frame > HELP_DISPLAY_SECS * config.TARGET_FPS:
-                help_alpha = max(0, help_alpha - HELP_FADE_SPEED)
-                if help_alpha <= 0:
-                    show_help = False
-                    help_auto_fade = False
+    def run(self):
+        """Main loop.  Returns when the window closes or ``frames`` is reached."""
+        w, h = self.size
+        print(f"\n  SELECTION PRESSURE  {w}x{h}, {self.sim.num} stars, seed {self.seed}")
+        print("  ESC/Q quit  SPACE pause  R reset  F fullscreen  S screenshot  H help\n")
+        frames_left = self.opts.frames
+        while self.running:
+            for event in pygame.event.get():
+                self.handle_event(event)
 
-        pygame.display.flip()
-        clock.tick(config.TARGET_FPS)
-        prof.tick()
+            self.prof.begin("simulation")
+            self.step()
+            self.prof.end()
+            self.draw()
 
-    pygame.quit()
-    print("\n  Goodbye!")
+            pygame.display.flip()
+            self.clock.tick(self.opts.fps)
+            self.prof.tick()
+
+            if frames_left is not None:
+                frames_left -= 1
+                if frames_left <= 0:
+                    self.running = False
 
 
-if __name__ == '__main__':
-    main()
+def run(options: Options) -> None:
+    """Initialise pygame, run the installation and shut down cleanly."""
+    display.enable_dpi_awareness()
+    pygame.init()
+    try:
+        App(options).run()
+    finally:
+        pygame.quit()

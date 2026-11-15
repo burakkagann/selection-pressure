@@ -1,5 +1,7 @@
 """Entry point for ``python -m selection_pressure``."""
 
-from .app import main
+import sys
 
-main()
+from .cli import main
+
+sys.exit(main())
