@@ -28,15 +28,9 @@ def render_hud(screen, font, sim, frame, predators, actual_fps):
 # PARTICIPANT HINT (bottom-center, subtle)
 # ============================================================
 
-_hint_font_cache = {}
 
-
-def render_participant_hint(screen):
+def render_participant_hint(screen, font):
     """Draw subtle interaction hint at bottom-center for exhibition visitors."""
-    size = 18
-    if size not in _hint_font_cache:
-        _hint_font_cache[size] = pygame.font.SysFont("consolas", size)
-    font = _hint_font_cache[size]
 
     hint_surf = font.render("[  ]   Add / Remove Black Holes", True, (120, 120, 120, 80))
     scr_w, scr_h = screen.get_size()
@@ -49,10 +43,8 @@ def render_participant_hint(screen):
 # ELAPSED TIME (bottom-right, exhibition aesthetic)
 # ============================================================
 
-_time_font_cache = {}
 
-
-def render_elapsed_time(screen, wall_elapsed):
+def render_elapsed_time(screen, wall_elapsed, font):
     """Draw a minimal HH:MM:SS clock in the bottom-right corner.
 
     Designed to feel like part of the installation — visible at projection
@@ -64,10 +56,6 @@ def render_elapsed_time(screen, wall_elapsed):
     time_str = f"{hours:02d}:{mins:02d}:{secs:02d}"
 
     # Larger font for projection readability
-    size = 32
-    if size not in _time_font_cache:
-        _time_font_cache[size] = pygame.font.SysFont("consolas", size)
-    font = _time_font_cache[size]
 
     # Warm-gray — visible on projector
     color = (140, 135, 130)
@@ -115,6 +103,13 @@ _PRED_GENOME_LABELS = [
 _evo_panel_cache = None
 _evo_panel_pos = None
 _evo_cache_frame = -100
+
+
+def reset_cache():
+    """Forget the cached evolution panel (call when starting a new window)."""
+    global _evo_panel_cache, _evo_panel_pos, _evo_cache_frame
+    _evo_panel_cache = _evo_panel_pos = None
+    _evo_cache_frame = -100
 
 
 def render_evolution_panel(

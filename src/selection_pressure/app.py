@@ -152,6 +152,9 @@ class App:
 
         self.font_hud = pygame.font.SysFont("consolas", 20)
         self.font_title = pygame.font.SysFont("consolas", 28, bold=True)
+        self.font_hint = pygame.font.SysFont("consolas", 18)
+        self.font_clock = pygame.font.SysFont("consolas", 32)
+        hud.reset_cache()
         self.lens_maps = rendering.precompute_lens_maps()
 
         self._create_surfaces()
@@ -383,8 +386,8 @@ class App:
             hud.render_hud(
                 screen, self.font_hud, sim, self.frame, self.predators, self.clock.get_fps()
             )
-            hud.render_elapsed_time(screen, self.elapsed_seconds())
-            hud.render_participant_hint(screen)
+            hud.render_elapsed_time(screen, self.elapsed_seconds(), self.font_clock)
+            hud.render_participant_hint(screen, self.font_hint)
         if config.EVOLUTION_ENABLED:
             hud.render_evolution_panel(
                 screen,
