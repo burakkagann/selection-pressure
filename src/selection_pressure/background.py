@@ -16,7 +16,7 @@ Demonstrates knowledge transfer across modules:
 
 import numpy as np
 import pygame
-import config
+from . import config
 
 
 # ============================================================

@@ -17,15 +17,9 @@ Key design for GA integration:
 """
 
 import numpy as np
-import config as cfg
-from config import BoidParams, PredatorParams
-
-# Optional modules — imported lazily so the simulation works headless.
-try:
-    from nebula import NebulaField
-except ImportError:
-    NebulaField = None
-
+from . import config as cfg
+from .config import BoidParams, PredatorParams
+from .nebula import NebulaField
 
 
 # ============================================================
@@ -129,7 +123,7 @@ class BoidsSimulation:
 
         # --- Nebula resource fields (ecosystem) ---
         self.nebula = None
-        if cfg.NEBULA_FIELDS_ENABLED and NebulaField is not None:
+        if cfg.NEBULA_FIELDS_ENABLED:
             self.nebula = NebulaField(
                 cfg.NUM_NEBULA_CLOUDS, width, height, rng)
 

@@ -10,7 +10,7 @@ Simulation state is passed in — no simulation logic lives here.
 
 import numpy as np
 import pygame
-import config
+from . import config
 
 
 # ============================================================
@@ -722,7 +722,7 @@ def composite_display(screen, trail_surface, galaxy_bg, twinkle_overlay,
         # Layer 1.5: Twinkling stars (Module 8: time-based animation)
         if (config.TWINKLE_ENABLED and twinkle_data
                 and twinkle_overlay is not None):
-            from background import update_twinkle_overlay
+            from .background import update_twinkle_overlay
             update_twinkle_overlay(
                 twinkle_overlay, twinkle_data, frame, config.TARGET_FPS)
             screen.blit(twinkle_overlay, (0, 0),

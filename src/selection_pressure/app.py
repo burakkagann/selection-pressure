@@ -49,10 +49,8 @@ except ImportError:
     print("ERROR: pygame not found. Install with: pip install pygame")
     sys.exit(1)
 
-import config
-from simulation import BoidsSimulation, BlackHolePredator
-import rendering
-import background
+from . import background, config, rendering
+from .simulation import BlackHolePredator, BoidsSimulation
 
 
 

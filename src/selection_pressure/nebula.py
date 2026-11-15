@@ -13,7 +13,7 @@ the canvas (toroidal wrapping).  All computation is vectorized NumPy.
 """
 
 import numpy as np
-import config as cfg
+from . import config as cfg
 
 
 class NebulaField:
