@@ -386,27 +386,17 @@ class BoidsSimulation:
             # Tier 1: defensive swirl (between defensive threshold and quorum)
             self.in_defensive = above_defensive & ~self.in_quorum
 
-            # Fortress effects: extra cohesion toward local center of mass
-            if np.any(self.in_quorum):
-                q_idx = np.where(self.in_quorum)[0]
-                for idx in q_idx:
-                    neighbors = quorum_mask[idx]
-                    if neighbors.sum() > 0:
-                        n_dx = -dx[idx][neighbors].mean()
-                        n_dy = -dy[idx][neighbors].mean()
-                        accel[idx, 0] += n_dx * cfg.QUORUM_FORTRESS_COHESION
-                        accel[idx, 1] += n_dy * cfg.QUORUM_FORTRESS_COHESION
-
-            # Defensive effects: extra cohesion toward local center of mass
-            if np.any(self.in_defensive):
-                d_idx = np.where(self.in_defensive)[0]
-                for idx in d_idx:
-                    neighbors = quorum_mask[idx]
-                    if neighbors.sum() > 0:
-                        n_dx = -dx[idx][neighbors].mean()
-                        n_dy = -dy[idx][neighbors].mean()
-                        accel[idx, 0] += n_dx * cfg.DEFENSIVE_COHESION_EXTRA
-                        accel[idx, 1] += n_dy * cfg.DEFENSIVE_COHESION_EXTRA
+            # Fortress and defensive boids get extra cohesion toward the
+            # centre of mass of their quorum neighbours.
+            pull = np.where(self.in_quorum, cfg.QUORUM_FORTRESS_COHESION,
+                            np.where(self.in_defensive, cfg.DEFENSIVE_COHESION_EXTRA, 0.0))
+            active = (pull > 0) & (self.quorum_neighbors > 0)
+            if np.any(active):
+                rows = np.where(active)[0]
+                mask = quorum_mask[rows]
+                count = self.quorum_neighbors[rows]
+                accel[rows, 0] -= (dx[rows] * mask).sum(axis=1) / count * pull[rows]
+                accel[rows, 1] -= (dy[rows] * mask).sum(axis=1) / count * pull[rows]
 
         # Compute predator distances (flee applied AFTER flock clamp)
         has_predators = predators is not None and len(predators) > 0
