@@ -34,21 +34,24 @@ class NebulaField:
 
         # Cloud positions — avoid spawning too close to edges
         margin = 0.15
-        self.positions = np.column_stack([
-            rng.uniform(width * margin, width * (1 - margin), num_clouds),
-            rng.uniform(height * margin, height * (1 - margin), num_clouds),
-        ])
+        self.positions = np.column_stack(
+            [
+                rng.uniform(width * margin, width * (1 - margin), num_clouds),
+                rng.uniform(height * margin, height * (1 - margin), num_clouds),
+            ]
+        )
 
         # Current density level [min, max] — starts near full
-        self.densities = np.full(num_clouds,
-                                 cfg.NEBULA_CLOUD_MAX_DENSITY * 0.9)
+        self.densities = np.full(num_clouds, cfg.NEBULA_CLOUD_MAX_DENSITY * 0.9)
 
         # Slow drift velocities (random direction, fixed slow speed)
         angles = rng.uniform(0, 2 * np.pi, num_clouds)
-        self.drift_vel = np.column_stack([
-            np.cos(angles) * cfg.NEBULA_CLOUD_DRIFT_SPEED,
-            np.sin(angles) * cfg.NEBULA_CLOUD_DRIFT_SPEED,
-        ])
+        self.drift_vel = np.column_stack(
+            [
+                np.cos(angles) * cfg.NEBULA_CLOUD_DRIFT_SPEED,
+                np.sin(angles) * cfg.NEBULA_CLOUD_DRIFT_SPEED,
+            ]
+        )
 
         # Occasionally reverse drift direction for organic feel
         self._drift_change_interval = 600  # frames between direction tweaks
@@ -146,14 +149,13 @@ class NebulaField:
             feeders = (dist < feed_r).sum()
             if feeders > 0:
                 drain = feeders * cfg.NEBULA_CLOUD_DEPLETION_RATE
-                self.densities[i] = max(cfg.NEBULA_CLOUD_MIN_DENSITY,
-                                        self.densities[i] - drain)
+                self.densities[i] = max(cfg.NEBULA_CLOUD_MIN_DENSITY, self.densities[i] - drain)
 
     def regenerate(self):
         """Slowly restore cloud density toward max."""
         self.densities = np.minimum(
-            cfg.NEBULA_CLOUD_MAX_DENSITY,
-            self.densities + cfg.NEBULA_CLOUD_REGEN_RATE)
+            cfg.NEBULA_CLOUD_MAX_DENSITY, self.densities + cfg.NEBULA_CLOUD_REGEN_RATE
+        )
 
     def drift(self):
         """Move clouds slowly, wrapping toroidally."""

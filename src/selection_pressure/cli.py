@@ -32,6 +32,7 @@ def _ranged(lo: int, hi: int):
         if not lo <= value <= hi:
             raise argparse.ArgumentTypeError(f"must be between {lo} and {hi}")
         return value
+
     return parse
 
 
@@ -39,40 +40,76 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="selection-pressure",
         description="Boids, black holes and evolution in real time.",
-        epilog="Most visual and behavioural tuning lives in config.py.")
+        epilog="Most visual and behavioural tuning lives in config.py.",
+    )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     view = p.add_argument_group("display")
-    view.add_argument("--display", type=_display,
-                      default=os.environ.get("SP_DISPLAY", "primary"),
-                      help="monitor to use: 'primary' (default), 'auto' (largest "
-                           "secondary screen, e.g. a projector) or an index")
-    view.add_argument("--windowed", nargs="?", const=True, default=False,
-                      type=_window_size, metavar="WxH",
-                      help="run in a resizable window (default 80%% of the monitor)")
-    view.add_argument("--fps", type=_ranged(10, 240), default=config.TARGET_FPS,
-                      help="frame-rate cap (default %(default)s)")
-    view.add_argument("--no-hud", dest="show_hud", action="store_false",
-                      help="hide the status line, clock and visitor hint")
-    view.add_argument("--kiosk", action="store_true",
-                      help="exhibition mode: minimise the console window on start")
+    view.add_argument(
+        "--display",
+        type=_display,
+        default=os.environ.get("SP_DISPLAY", "primary"),
+        help="monitor to use: 'primary' (default), 'auto' (largest "
+        "secondary screen, e.g. a projector) or an index",
+    )
+    view.add_argument(
+        "--windowed",
+        nargs="?",
+        const=True,
+        default=False,
+        type=_window_size,
+        metavar="WxH",
+        help="run in a resizable window (default 80%% of the monitor)",
+    )
+    view.add_argument(
+        "--fps",
+        type=_ranged(10, 240),
+        default=config.TARGET_FPS,
+        help="frame-rate cap (default %(default)s)",
+    )
+    view.add_argument(
+        "--no-hud",
+        dest="show_hud",
+        action="store_false",
+        help="hide the status line, clock and visitor hint",
+    )
+    view.add_argument(
+        "--kiosk", action="store_true", help="exhibition mode: minimise the console window on start"
+    )
 
     world = p.add_argument_group("simulation")
-    world.add_argument("--seed", type=int, default=config.SEED,
-                       help="random seed (default %(default)s)")
-    world.add_argument("--stars", type=_ranged(app.MIN_STARS, app.MAX_STARS),
-                       default=config.NUM_BOIDS, help="starting stars (default %(default)s)")
-    world.add_argument("--black-holes", type=_ranged(0, app.MAX_BLACK_HOLES),
-                       default=config.NUM_BLACK_HOLES,
-                       help="starting black holes (default %(default)s)")
+    world.add_argument(
+        "--seed", type=int, default=config.SEED, help="random seed (default %(default)s)"
+    )
+    world.add_argument(
+        "--stars",
+        type=_ranged(app.MIN_STARS, app.MAX_STARS),
+        default=config.NUM_BOIDS,
+        help="starting stars (default %(default)s)",
+    )
+    world.add_argument(
+        "--black-holes",
+        type=_ranged(0, app.MAX_BLACK_HOLES),
+        default=config.NUM_BLACK_HOLES,
+        help="starting black holes (default %(default)s)",
+    )
 
     dev = p.add_argument_group("development")
-    dev.add_argument("--frames", type=_ranged(1, 10**9), metavar="N",
-                     help="quit after N frames (useful for tests and benchmarks)")
-    dev.add_argument("--profile", action="store_true",
-                     help="print per-stage frame timings every 120 frames")
-    dev.add_argument("--screenshot-dir", type=Path, default=Path("."),
-                     help="where S saves screenshots (default: current directory)")
+    dev.add_argument(
+        "--frames",
+        type=_ranged(1, 10**9),
+        metavar="N",
+        help="quit after N frames (useful for tests and benchmarks)",
+    )
+    dev.add_argument(
+        "--profile", action="store_true", help="print per-stage frame timings every 120 frames"
+    )
+    dev.add_argument(
+        "--screenshot-dir",
+        type=Path,
+        default=Path("."),
+        help="where S saves screenshots (default: current directory)",
+    )
     return p
 
 

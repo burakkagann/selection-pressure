@@ -35,9 +35,11 @@ def _get_fade_color():
     global _fade_color, _fade_color_params
     params = (config.TRAIL_FADE_R, config.TRAIL_FADE_G, config.TRAIL_FADE_B)
     if _fade_color is None or _fade_color_params != params:
-        _fade_color = (round(config.TRAIL_FADE_R * 255),
-                       round(config.TRAIL_FADE_G * 255),
-                       round(config.TRAIL_FADE_B * 255))
+        _fade_color = (
+            round(config.TRAIL_FADE_R * 255),
+            round(config.TRAIL_FADE_G * 255),
+            round(config.TRAIL_FADE_B * 255),
+        )
         _fade_color_params = params
     return _fade_color
 
@@ -60,8 +62,11 @@ def _get_halo_surfaces():
     BLEND_RGB_MULT to replace the per-frame numpy halo computation.
     """
     global _halo_surf_normal, _halo_surf_lunge, _halo_params
-    params = (config.BLACK_HOLE_HALO_RADIUS, config.BLACK_HOLE_VOID_RADIUS,
-              config.BLACK_HOLE_HALO_STRENGTH)
+    params = (
+        config.BLACK_HOLE_HALO_RADIUS,
+        config.BLACK_HOLE_VOID_RADIUS,
+        config.BLACK_HOLE_HALO_STRENGTH,
+    )
     if _halo_params == params:
         return _halo_surf_normal, _halo_surf_lunge
     _halo_params = params
@@ -81,8 +86,7 @@ def _get_halo_surfaces():
 
         vr = config.BLACK_HOLE_VOID_RADIUS
         t = np.clip((dist - vr) / (hr - vr + 1e-10), 0, 1)
-        factor = (config.BLACK_HOLE_HALO_STRENGTH
-                  + (1.0 - config.BLACK_HOLE_HALO_STRENGTH) * t)
+        factor = config.BLACK_HOLE_HALO_STRENGTH + (1.0 - config.BLACK_HOLE_HALO_STRENGTH) * t
         factor = np.where(dist < hr, factor, 1.0)
         factor_u8 = (factor * 255).astype(np.uint8)
 
@@ -103,6 +107,7 @@ def _get_halo_surfaces():
 # ============================================================
 # COLOR UTILITIES
 # ============================================================
+
 
 def get_palette():
     """Return the currently active color palette."""
@@ -129,6 +134,7 @@ def get_palette_colors(frame_num, phase_offsets, total_frames):
 # GRAVITATIONAL LENSING PRECOMPUTATION
 # ============================================================
 
+
 def precompute_lens_maps():
     """Precompute gravitational lensing displacement maps.
 
@@ -140,14 +146,13 @@ def precompute_lens_maps():
     lx = np.arange(lens_size) - lr
     ly = np.arange(lens_size) - lr
     lxx, lyy = np.meshgrid(lx, ly, indexing='ij')
-    ldist = np.sqrt(lxx ** 2 + lyy ** 2)
+    ldist = np.sqrt(lxx**2 + lyy**2)
     ldist_safe = np.maximum(ldist, 1e-10)
 
     t = np.clip(ldist / lr, 0, 1)
     displacement = config.LENS_STRENGTH * (1.0 - t) ** config.LENS_FALLOFF
     displacement = np.where(ldist <= lr, displacement, 0.0)
-    displacement = np.where(
-        ldist >= config.BLACK_HOLE_VOID_RADIUS, displacement, 0.0)
+    displacement = np.where(ldist >= config.BLACK_HOLE_VOID_RADIUS, displacement, 0.0)
 
     # Positive direction = source is further from center than output pixel.
     # This pulls bright trail content inward toward the void (converging lens).
@@ -160,7 +165,7 @@ def precompute_lens_maps():
     lx_l = np.arange(lens_size_l) - lr_lunge
     ly_l = np.arange(lens_size_l) - lr_lunge
     lxx_l, lyy_l = np.meshgrid(lx_l, ly_l, indexing='ij')
-    ldist_l = np.sqrt(lxx_l ** 2 + lyy_l ** 2)
+    ldist_l = np.sqrt(lxx_l**2 + lyy_l**2)
     ldist_safe_l = np.maximum(ldist_l, 1e-10)
     t_l = np.clip(ldist_l / lr_lunge, 0, 1)
     disp_l = (config.LENS_STRENGTH * 1.4) * (1.0 - t_l) ** config.LENS_FALLOFF
@@ -180,6 +185,7 @@ def precompute_lens_maps():
 # TRAIL FADING
 # ============================================================
 
+
 def fade_trails(trail_surface):
     """Apply per-channel fade to trail surface (warm-to-cool color shift).
 
@@ -191,10 +197,8 @@ def fade_trails(trail_surface):
     values (e.g. pixel=10, factor=247: (10*247+128)>>8 = 10), which would
     leave a permanent residual glow on every pixel a boid ever touched.
     """
-    trail_surface.fill(_get_fade_color(),
-                       special_flags=pygame.BLEND_RGB_MULT)
-    trail_surface.fill((1, 1, 1),
-                       special_flags=pygame.BLEND_RGB_SUB)
+    trail_surface.fill(_get_fade_color(), special_flags=pygame.BLEND_RGB_MULT)
+    trail_surface.fill((1, 1, 1), special_flags=pygame.BLEND_RGB_SUB)
 
 
 # ============================================================
@@ -221,15 +225,18 @@ def _lineage_colors(lineage_ids, num_boids):
     one, zero = np.ones_like(frac), np.zeros_like(frac)
     # (r, g, b) for each of the six hue sectors, as in colorsys.hsv_to_rgb
     table = [
-        (one, frac, zero), (one - frac, one, zero), (zero, one, frac),
-        (zero, one - frac, one), (frac, zero, one), (one, zero, one - frac),
+        (one, frac, zero),
+        (one - frac, one, zero),
+        (zero, one, frac),
+        (zero, one - frac, one),
+        (frac, zero, one),
+        (one, zero, one - frac),
     ]
-    rgb = np.select([sector == k for k in range(6)],
-                    [np.concatenate(t, axis=1) for t in table])
+    rgb = np.select([sector == k for k in range(6)], [np.concatenate(t, axis=1) for t in table])
     return (rgb * 255).astype(np.float32)
 
-def draw_boids(boid_layer, trail_surface, sim, frame, total_frames,
-               predators):
+
+def draw_boids(boid_layer, trail_surface, sim, frame, total_frames, predators):
     """Draw boid dots/streaks with palette colors, fear shift, and shimmer.
 
     Draws onto boid_layer (cleared each frame), then composites additively
@@ -242,9 +249,12 @@ def draw_boids(boid_layer, trail_surface, sim, frame, total_frames,
         colors = get_palette_colors(frame, sim.phase_offsets, total_frames)
 
     # Fear color shift: boids near any predator redshift
-    if (config.BLACK_HOLE_ENABLED and len(predators) > 0
-            and config.BLACK_HOLE_FEAR_COLOR_SHIFT
-            and sim._bh_dist is not None):
+    if (
+        config.BLACK_HOLE_ENABLED
+        and len(predators) > 0
+        and config.BLACK_HOLE_FEAR_COLOR_SHIFT
+        and sim._bh_dist is not None
+    ):
         # Use first predator's flee_radius for fear gradient
         flee_r = predators[0].params.flee_radius
         fear_factor = np.clip(1.0 - sim._bh_dist / flee_r, 0, 1)
@@ -274,18 +284,16 @@ def draw_boids(boid_layer, trail_surface, sim, frame, total_frames,
     if np.any(sim.in_defensive):
         silver = np.array(config.DEFENSIVE_SILVER_COLOR, dtype=np.float32)
         # Per-boid blend: 1.0 for defensive boids, 0.0 for others
-        d_blend = np.where(sim.in_defensive,
-                           config.DEFENSIVE_SILVER_BLEND, 0.0)[:, np.newaxis]
+        d_blend = np.where(sim.in_defensive, config.DEFENSIVE_SILVER_BLEND, 0.0)[:, np.newaxis]
         colors = colors * (1.0 - d_blend) + silver * d_blend
         # Spatial shimmer wave (only affects defensive boids)
         t = frame / max(config.TARGET_FPS, 1)
         wave_dir_x = np.cos(t * 0.5)
         wave_dir_y = np.sin(t * 0.5)
-        spatial_phase = (sim.positions[:, 0] * wave_dir_x
-                         + sim.positions[:, 1] * wave_dir_y) * 0.02
-        shimmer_val = (config.DEFENSIVE_SHIMMER_AMOUNT
-                       * np.sin(2 * np.pi * config.DEFENSIVE_SHIMMER_SPEED * t
-                                + spatial_phase))
+        spatial_phase = (sim.positions[:, 0] * wave_dir_x + sim.positions[:, 1] * wave_dir_y) * 0.02
+        shimmer_val = config.DEFENSIVE_SHIMMER_AMOUNT * np.sin(
+            2 * np.pi * config.DEFENSIVE_SHIMMER_SPEED * t + spatial_phase
+        )
         shimmer = 1.0 + np.where(sim.in_defensive, shimmer_val, 0.0)
         colors = colors * shimmer[:, np.newaxis]
 
@@ -301,8 +309,7 @@ def draw_boids(boid_layer, trail_surface, sim, frame, total_frames,
     # Effective streak width (defensive mode = thinner streaks)
     eff_streak_w = config.STREAK_WIDTH
     if np.any(sim.in_defensive):
-        eff_streak_w = max(1, int(config.STREAK_WIDTH
-                                  * config.DEFENSIVE_STREAK_TIGHTEN + 0.5))
+        eff_streak_w = max(1, int(config.STREAK_WIDTH * config.DEFENSIVE_STREAK_TIGHTEN + 0.5))
 
     # Pre-convert numpy arrays to Python lists — eliminates per-iteration
     # numpy element access overhead (type checks, scalar wrapping).
@@ -336,21 +343,15 @@ def draw_boids(boid_layer, trail_surface, sim, frame, total_frames,
         if config.SPEED_AFFECTS_SIZE:
             speed_ratios_list = speed_ratios.tolist()
             for i in range(sim.num):
-                r = max(2, int(config.GLOW_BASE_RADIUS
-                               * (1.3 - 0.5 * speed_ratios_list[i])))
-                _draw_circle(boid_layer,
-                             (col_r[i], col_g[i], col_b[i]),
-                             (pos_x[i], pos_y[i]), r)
+                r = max(2, int(config.GLOW_BASE_RADIUS * (1.3 - 0.5 * speed_ratios_list[i])))
+                _draw_circle(boid_layer, (col_r[i], col_g[i], col_b[i]), (pos_x[i], pos_y[i]), r)
         else:
             r = config.GLOW_BASE_RADIUS
             for i in range(sim.num):
-                _draw_circle(boid_layer,
-                             (col_r[i], col_g[i], col_b[i]),
-                             (pos_x[i], pos_y[i]), r)
+                _draw_circle(boid_layer, (col_r[i], col_g[i], col_b[i]), (pos_x[i], pos_y[i]), r)
 
     # Additive composite: overlapping boids glow brighter
-    trail_surface.blit(
-        boid_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+    trail_surface.blit(boid_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
 
 # ============================================================
@@ -423,6 +424,7 @@ def draw_nebula_clouds(screen, nebula, frame):
 # BLACK HOLE VISUAL EFFECTS
 # ============================================================
 
+
 def draw_black_holes(trail_surface, predators, frame):
     """Draw all black hole visual effects onto trail_surface.
 
@@ -436,8 +438,7 @@ def draw_black_holes(trail_surface, predators, frame):
     # The void doesn't just cover light — it *drains* nearby brightness.
     # Uses precomputed radial gradient surfaces blitted with BLEND_RGB_MULT
     # instead of per-frame numpy computation (~2-3ms -> ~0.1ms per predator).
-    if (config.BLACK_HOLE_HALO_RADIUS > 0
-            and config.BLACK_HOLE_HALO_STRENGTH < 1.0):
+    if config.BLACK_HOLE_HALO_RADIUS > 0 and config.BLACK_HOLE_HALO_STRENGTH < 1.0:
         halo_normal, halo_lunge = _get_halo_surfaces()
         for pred in predators:
             cx = int(round(pred.position[0]))
@@ -451,16 +452,14 @@ def draw_black_holes(trail_surface, predators, frame):
 
             # Scale halo by mass (heavier BH = larger dimming area)
             if config.ACCRETION_HUNGER_ENABLED:
-                mass_scale = pred.mass ** config.BH_MASS_RADIUS_EXPONENT
+                mass_scale = pred.mass**config.BH_MASS_RADIUS_EXPONENT
                 hr = int(hr * mass_scale)
                 orig_size = halo_surf.get_size()
-                new_size = (int(orig_size[0] * mass_scale),
-                            int(orig_size[1] * mass_scale))
+                new_size = (int(orig_size[0] * mass_scale), int(orig_size[1] * mass_scale))
                 if new_size != orig_size:
                     halo_surf = pygame.transform.scale(halo_surf, new_size)
 
-            trail_surface.blit(halo_surf, (cx - hr, cy - hr),
-                               special_flags=pygame.BLEND_RGB_MULT)
+            trail_surface.blit(halo_surf, (cx - hr, cy - hr), special_flags=pygame.BLEND_RGB_MULT)
 
     for pred in predators:
         bh_x = int(round(pred.position[0]))
@@ -479,59 +478,51 @@ def draw_black_holes(trail_surface, predators, frame):
                 # Brightness: heats up as radius shrinks, fades with age
                 t_life = age / max(pred.params.accretion_lifetime, 1)
                 heat = 1.0 + 0.6 * (1.0 - radius / max(init_r, 1))
-                fade = 1.0 - t_life ** 0.7
+                fade = 1.0 - t_life**0.7
                 bright = max(0.0, min(1.0, heat * fade))
-                color = (int(ar * bright), int(ag * bright),
-                         int(ab * bright))
+                color = (int(ar * bright), int(ag * bright), int(ab * bright))
                 # Size grows slightly as particle spirals inward
-                dot_r = max(
-                    1, int(2 + (1.0 - radius / max(init_r, 1)) * 2))
-                pygame.draw.circle(
-                    trail_surface, color,
-                    (int(round(px)), int(round(py))), dot_r)
+                dot_r = max(1, int(2 + (1.0 - radius / max(init_r, 1)) * 2))
+                pygame.draw.circle(trail_surface, color, (int(round(px)), int(round(py))), dot_r)
 
         # Visual scaling during lunge + mass
         lunge_scale = 1.4 if pred.lunging else 1.0
-        mass_scale = (pred.mass ** config.BH_MASS_RADIUS_EXPONENT
-                      if config.ACCRETION_HUNGER_ENABLED else 1.0)
+        mass_scale = (
+            pred.mass**config.BH_MASS_RADIUS_EXPONENT if config.ACCRETION_HUNGER_ENABLED else 1.0
+        )
         void_r = int(config.BLACK_HOLE_VOID_RADIUS * lunge_scale * mass_scale)
 
         # --- Option 1: Photon ring (concentric warm glow rings) ---
         if config.PHOTON_RING_ENABLED:
             # Layers from outside in: faint deep red -> white-hot
             glow_defs = [
-                (35, (40, 10, 5), 8),       # outer: faint deep red
-                (25, (120, 50, 10), 5),      # mid-outer: warm amber
-                (18, (200, 100, 30), 4),     # mid: bright orange
-                (12, (255, 180, 80), 3),     # inner: hot orange-yellow
-                (6,  (255, 230, 180), 2),    # innermost: white-hot
+                (35, (40, 10, 5), 8),  # outer: faint deep red
+                (25, (120, 50, 10), 5),  # mid-outer: warm amber
+                (18, (200, 100, 30), 4),  # mid: bright orange
+                (12, (255, 180, 80), 3),  # inner: hot orange-yellow
+                (6, (255, 230, 180), 2),  # innermost: white-hot
             ]
             for offset, gc, gw in glow_defs:
                 gr = void_r + offset
                 if pred.lunging:
                     gc = tuple(min(255, int(c * 1.4)) for c in gc)
-                pygame.draw.circle(
-                    trail_surface, gc, (bh_x, bh_y), gr, width=gw)
+                pygame.draw.circle(trail_surface, gc, (bh_x, bh_y), gr, width=gw)
         else:
             # Fallback: original single ring
             ring_r = int(config.BLACK_HOLE_RING_RADIUS * lunge_scale)
             ring_w = 3 if pred.lunging else 2
             ring_col = (
-                min(255, int(config.BLACK_HOLE_RING_COLOR[0]
-                             * (2.0 if pred.lunging else 1.0))),
+                min(255, int(config.BLACK_HOLE_RING_COLOR[0] * (2.0 if pred.lunging else 1.0))),
                 config.BLACK_HOLE_RING_COLOR[1],
-                min(255, int(config.BLACK_HOLE_RING_COLOR[2]
-                             * (1.5 if pred.lunging else 1.0)))
+                min(255, int(config.BLACK_HOLE_RING_COLOR[2] * (1.5 if pred.lunging else 1.0))),
             )
-            pygame.draw.circle(
-                trail_surface, ring_col,
-                (bh_x, bh_y), ring_r, width=ring_w)
+            pygame.draw.circle(trail_surface, ring_col, (bh_x, bh_y), ring_r, width=ring_w)
 
         # --- Option 2: Accretion glow (persistent orbiting warm ring) ---
         if config.ACCRETION_GLOW_ENABLED:
             glow_r = void_r + 20
             n_glow = 48
-            bright_a = frame * 0.015   # bright spot rotates (~7s/rev)
+            bright_a = frame * 0.015  # bright spot rotates (~7s/rev)
             for k in range(n_glow):
                 a = 2.0 * np.pi * k / n_glow
                 # Doppler: brightness peaks at bright_a, dims opposite
@@ -540,22 +531,16 @@ def draw_black_holes(trail_surface, predators, frame):
                     doppler = min(1.0, doppler * 1.3)
                 gx = bh_x + int(glow_r * np.cos(a))
                 gy = bh_y + int(glow_r * np.sin(a))
-                gc = (int(255 * doppler), int(150 * doppler),
-                      int(40 * doppler))
+                gc = (int(255 * doppler), int(150 * doppler), int(40 * doppler))
                 pygame.draw.circle(trail_surface, gc, (gx, gy), 3)
 
         # Dark void (always on top — truly black center)
-        pygame.draw.circle(
-            trail_surface, (0, 0, 0),
-            (bh_x, bh_y), void_r
-        )
+        pygame.draw.circle(trail_surface, (0, 0, 0), (bh_x, bh_y), void_r)
 
         # --- Option 3: Photon sphere (thin bright rim at void edge) ---
         if config.PHOTON_SPHERE_ENABLED:
             rim_c = (255, 255, 240) if pred.lunging else (255, 240, 220)
-            pygame.draw.circle(
-                trail_surface, rim_c,
-                (bh_x, bh_y), void_r + 1, width=1)
+            pygame.draw.circle(trail_surface, rim_c, (bh_x, bh_y), void_r + 1, width=1)
 
         # Consume flash effects (warm orange = death)
         pred.age_flashes()
@@ -567,18 +552,16 @@ def draw_black_holes(trail_surface, predators, frame):
             flash_color = (
                 min(255, int(flash[2] * alpha / 255)),
                 min(255, int(flash[3] * alpha / 255)),
-                min(255, int(flash[4] * alpha / 255))
+                min(255, int(flash[4] * alpha / 255)),
             )
             if alpha > 0:
-                pygame.draw.circle(
-                    trail_surface, flash_color,
-                    (fx, fy), flash_r, width=2
-                )
+                pygame.draw.circle(trail_surface, flash_color, (fx, fy), flash_r, width=2)
 
 
 # ============================================================
 # BLACK HOLE VOID ON SCREEN (post-composite)
 # ============================================================
+
 
 def stamp_void_on_screen(screen, predators):
     """Stamp truly-black void circles onto the final composited screen.
@@ -597,8 +580,9 @@ def stamp_void_on_screen(screen, predators):
         bh_x = int(round(pred.position[0]))
         bh_y = int(round(pred.position[1]))
         lunge_scale = 1.4 if pred.lunging else 1.0
-        mass_scale = (pred.mass ** config.BH_MASS_RADIUS_EXPONENT
-                      if config.ACCRETION_HUNGER_ENABLED else 1.0)
+        mass_scale = (
+            pred.mass**config.BH_MASS_RADIUS_EXPONENT if config.ACCRETION_HUNGER_ENABLED else 1.0
+        )
         void_r = int(config.BLACK_HOLE_VOID_RADIUS * lunge_scale * mass_scale)
         pygame.draw.circle(screen, (0, 0, 0), (bh_x, bh_y), void_r)
 
@@ -606,6 +590,7 @@ def stamp_void_on_screen(screen, predators):
 # ============================================================
 # BIRTH FLASH (evolution respawn effect)
 # ============================================================
+
 
 def draw_birth_flashes(trail_surface, birth_flashes):
     """Draw cyan ring pulses at boid respawn points.
@@ -617,10 +602,8 @@ def draw_birth_flashes(trail_surface, birth_flashes):
         flash_r = 4 + age * 2
         alpha = max(0, 255 - age * 18)
         if alpha > 0:
-            color = (0, min(255, int(200 * alpha / 255)),
-                     min(255, int(255 * alpha / 255)))
-            pygame.draw.circle(
-                trail_surface, color, (fx, fy), flash_r, width=2)
+            color = (0, min(255, int(200 * alpha / 255)), min(255, int(255 * alpha / 255)))
+            pygame.draw.circle(trail_surface, color, (fx, fy), flash_r, width=2)
 
 
 # ============================================================
@@ -629,6 +612,7 @@ def draw_birth_flashes(trail_surface, birth_flashes):
 
 # Explosion lifetime in frames (visual only — does not affect simulation)
 _EXPLOSION_LIFETIME = 45
+
 
 def draw_predator_explosions(trail_surface, explosions):
     """Draw dramatic expanding ring + particle burst at predator death sites.
@@ -646,41 +630,49 @@ def draw_predator_explosions(trail_surface, explosions):
         t = age / _EXPLOSION_LIFETIME  # 0.0 -> 1.0 over lifetime
 
         # Overall brightness fade
-        brightness = max(0.0, 1.0 - t ** 0.6)
+        brightness = max(0.0, 1.0 - t**0.6)
 
         # Ring 1: outermost — large, faint orange-red
         r1 = int(30 + age * 5)
         a1 = max(0, int(120 * brightness))
         if a1 > 0:
-            c1 = (min(255, int(255 * brightness * 0.7)),
-                  min(255, int(100 * brightness * 0.5)),
-                  min(255, int(20 * brightness * 0.3)))
+            c1 = (
+                min(255, int(255 * brightness * 0.7)),
+                min(255, int(100 * brightness * 0.5)),
+                min(255, int(20 * brightness * 0.3)),
+            )
             pygame.draw.circle(trail_surface, c1, (fx, fy), r1, width=3)
 
         # Ring 2: mid — bright orange
         r2 = int(20 + age * 3.5)
         a2 = max(0, int(180 * brightness))
         if a2 > 0:
-            c2 = (min(255, int(255 * brightness)),
-                  min(255, int(160 * brightness * 0.7)),
-                  min(255, int(40 * brightness * 0.3)))
+            c2 = (
+                min(255, int(255 * brightness)),
+                min(255, int(160 * brightness * 0.7)),
+                min(255, int(40 * brightness * 0.3)),
+            )
             pygame.draw.circle(trail_surface, c2, (fx, fy), r2, width=3)
 
         # Ring 3: inner — yellow-white, hot core
         r3 = int(10 + age * 2)
         a3 = max(0, int(220 * brightness))
         if a3 > 0:
-            c3 = (min(255, int(255 * brightness)),
-                  min(255, int(230 * brightness)),
-                  min(255, int(150 * brightness * 0.8)))
+            c3 = (
+                min(255, int(255 * brightness)),
+                min(255, int(230 * brightness)),
+                min(255, int(150 * brightness * 0.8)),
+            )
             pygame.draw.circle(trail_surface, c3, (fx, fy), r3, width=2)
 
         # Ring 4: innermost — white-hot flash (early frames only)
         if age < 15:
             r4 = int(5 + age * 1.2)
-            c4 = (min(255, int(255 * brightness)),
-                  min(255, int(255 * brightness)),
-                  min(255, int(240 * brightness)))
+            c4 = (
+                min(255, int(255 * brightness)),
+                min(255, int(255 * brightness)),
+                min(255, int(240 * brightness)),
+            )
             pygame.draw.circle(trail_surface, c4, (fx, fy), r4, width=2)
 
         # Particle scatter — bright dots radiating outward
@@ -692,9 +684,7 @@ def draw_predator_explosions(trail_surface, explosions):
                 px = fx + int(dist * np.cos(angle))
                 py = fy + int(dist * np.sin(angle))
                 pb = max(0.0, brightness * (1.0 - age / 30))
-                pc = (min(255, int(255 * pb)),
-                      min(255, int(200 * pb)),
-                      min(255, int(80 * pb)))
+                pc = (min(255, int(255 * pb)), min(255, int(200 * pb)), min(255, int(80 * pb)))
                 pygame.draw.circle(trail_surface, pc, (px, py), 2)
 
         # Age this explosion
@@ -710,28 +700,25 @@ def draw_predator_explosions(trail_surface, explosions):
 # DISPLAY COMPOSITING
 # ============================================================
 
-def composite_display(screen, trail_surface, galaxy_bg, twinkle_overlay,
-                      twinkle_data, frame):
+
+def composite_display(screen, trail_surface, galaxy_bg, twinkle_overlay, twinkle_data, frame):
     """Composite all layers onto the screen surface."""
     if config.GALAXY_BG_ENABLED and galaxy_bg is not None:
         # Layer 1: Static galaxy background (stars + nebula fog)
         screen.blit(galaxy_bg, (0, 0))
 
         # Layer 1.5: Twinkling stars
-        if (config.TWINKLE_ENABLED and twinkle_data
-                and twinkle_overlay is not None):
+        if config.TWINKLE_ENABLED and twinkle_data and twinkle_overlay is not None:
             from .background import update_twinkle_overlay
-            update_twinkle_overlay(
-                twinkle_overlay, twinkle_data, frame, config.TARGET_FPS)
-            screen.blit(twinkle_overlay, (0, 0),
-                        special_flags=pygame.BLEND_RGB_ADD)
+
+            update_twinkle_overlay(twinkle_overlay, twinkle_data, frame, config.TARGET_FPS)
+            screen.blit(twinkle_overlay, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
         # Layer 2: Boid trails composited additively on top of galaxy.
         # Black trail pixels (faded areas) add nothing — galaxy shows
         # through.  Active trails glow brighter than the background.
         # Additive color mixing.
-        screen.blit(trail_surface, (0, 0),
-                    special_flags=pygame.BLEND_RGB_ADD)
+        screen.blit(trail_surface, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
     else:
         # Original behavior: trail surface is the only layer
         screen.blit(trail_surface, (0, 0))
@@ -740,6 +727,7 @@ def composite_display(screen, trail_surface, galaxy_bg, twinkle_overlay,
 # ============================================================
 # BLOOM
 # ============================================================
+
 
 def apply_bloom(screen, trail_surface):
     """Downscale-blur-upscale the trail, then add to screen as soft glow.
@@ -760,24 +748,20 @@ def apply_bloom(screen, trail_surface):
     small_h = max(1, scr_h // config.BLOOM_DOWNSCALE)
 
     # Cache intermediate surfaces to avoid per-frame allocation
-    if (_bloom_small_surf is None
-            or _bloom_small_surf.get_size() != (small_w, small_h)):
+    if _bloom_small_surf is None or _bloom_small_surf.get_size() != (small_w, small_h):
         _bloom_small_surf = pygame.Surface((small_w, small_h))
-    if (_bloom_full_surf is None
-            or _bloom_full_surf.get_size() != (scr_w, scr_h)):
+    if _bloom_full_surf is None or _bloom_full_surf.get_size() != (scr_w, scr_h):
         _bloom_full_surf = pygame.Surface((scr_w, scr_h))
 
     # Downscale: smoothscale averages nearby pixels (cheap box blur)
-    pygame.transform.smoothscale(trail_surface, (small_w, small_h),
-                                 _bloom_small_surf)
+    pygame.transform.smoothscale(trail_surface, (small_w, small_h), _bloom_small_surf)
     # Dim the bloom by intensity factor — on the SMALL surface (16x fewer px)
     lut = _get_bloom_lut()
     bpx = pygame.surfarray.pixels3d(_bloom_small_surf)
     bpx[:] = lut[bpx]
     del bpx  # release surface lock
     # Nearest-neighbor upscale (much faster than smoothscale)
-    pygame.transform.scale(_bloom_small_surf,
-                           (scr_w, scr_h), _bloom_full_surf)
+    pygame.transform.scale(_bloom_small_surf, (scr_w, scr_h), _bloom_full_surf)
     # Additive composite: soft glow halo appears around bright areas
     screen.blit(_bloom_full_surf, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
@@ -786,14 +770,14 @@ def apply_bloom(screen, trail_surface):
 # GRAVITATIONAL LENSING
 # ============================================================
 
+
 def apply_lensing(screen, predators, lens_maps):
     """Warp screen pixels around each black hole using precomputed maps.
 
     Applied to screen only — trail_surface stays unmodified so screenshots
     remain clean.
     """
-    if (not config.LENS_ENABLED or not config.BLACK_HOLE_ENABLED
-            or len(predators) == 0):
+    if not config.LENS_ENABLED or not config.BLACK_HOLE_ENABLED or len(predators) == 0:
         return
 
     scr_px = pygame.surfarray.pixels3d(screen)
@@ -810,8 +794,9 @@ def apply_lensing(screen, predators, lens_maps):
             dx_map, dy_map, half = lens_maps['normal']
 
         # Mass-scaled lensing: heavier black holes warp more strongly
-        mass_lens = (pred.mass ** config.BH_MASS_RADIUS_EXPONENT
-                     if config.ACCRETION_HUNGER_ENABLED else 1.0)
+        mass_lens = (
+            pred.mass**config.BH_MASS_RADIUS_EXPONENT if config.ACCRETION_HUNGER_ENABLED else 1.0
+        )
 
         # Bounding box clipped to actual screen surface size
         x0 = max(0, cx - half)

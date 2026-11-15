@@ -15,12 +15,11 @@ from .rendering import lineage_color
 # HUD (Heads-Up Display)
 # ============================================================
 
+
 def render_hud(screen, font, sim, frame, predators, actual_fps):
     """Render the top-left HUD status line."""
     hud = font.render(
-        f"FPS: {actual_fps:.0f} | Stars: {sim.num} | "
-        f"Frame: {frame}",
-        True, (150, 150, 150)
+        f"FPS: {actual_fps:.0f} | Stars: {sim.num} | Frame: {frame}", True, (150, 150, 150)
     )
     screen.blit(hud, (10, 10))
 
@@ -39,8 +38,7 @@ def render_participant_hint(screen):
         _hint_font_cache[size] = pygame.font.SysFont("consolas", size)
     font = _hint_font_cache[size]
 
-    hint_surf = font.render(
-        "[  ]   Add / Remove Black Holes", True, (120, 120, 120, 80))
+    hint_surf = font.render("[  ]   Add / Remove Black Holes", True, (120, 120, 120, 80))
     scr_w, scr_h = screen.get_size()
     x = (scr_w - hint_surf.get_width()) // 2
     y = scr_h - 30
@@ -89,16 +87,27 @@ def render_elapsed_time(screen, wall_elapsed):
 
 # Display labels for genome fields (matches GENOME_FIELDS order)
 _GENOME_LABELS = [
-    'Separation',  'Alignment',  'Cohesion',
-    'Sep Radius',  'Ali Radius', 'Coh Radius',
-    'Max Speed',   'Min Speed',  'Steer',
-    'Chemotaxis',  'Quorum',
+    'Separation',
+    'Alignment',
+    'Cohesion',
+    'Sep Radius',
+    'Ali Radius',
+    'Coh Radius',
+    'Max Speed',
+    'Min Speed',
+    'Steer',
+    'Chemotaxis',
+    'Quorum',
 ]
 
 # Display labels for predator genome fields (matches PREDATOR_GENOME_FIELDS order)
 _PRED_GENOME_LABELS = [
-    'Speed',       'Steer',       'Sight',
-    'Lunge Spd',   'Lunge Dur',   'Lunge CD',
+    'Speed',
+    'Steer',
+    'Sight',
+    'Lunge Spd',
+    'Lunge Dur',
+    'Lunge CD',
     'Consume R',
 ]
 
@@ -108,8 +117,9 @@ _evo_panel_pos = None
 _evo_cache_frame = -100
 
 
-def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
-                           predators=None, starvation_events_total=0):
+def render_evolution_panel(
+    screen, font_title, font_body, sim, frame=0, predators=None, starvation_events_total=0
+):
     """Draw a unified bottom-left panel: boid genome + predator stats.
 
     Top section: boid genome drift bars, diversity, lineage distribution.
@@ -125,26 +135,27 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
 
     # Use cached panel surface when possible (10 updates/sec is enough)
     # (a negative age means the frame counter was reset, so rebuild)
-    if (_evo_panel_cache is not None
-            and 0 <= frame - _evo_cache_frame < 6):
+    if _evo_panel_cache is not None and 0 <= frame - _evo_cache_frame < 6:
         screen.blit(_evo_panel_cache, _evo_panel_pos)
         return
 
     _evo_cache_frame = frame
 
     # Determine if predator section is included
-    show_predators = (predators is not None
-                      and len(predators) > 0
-                      and config.BLACK_HOLE_ENABLED
-                      and config.PREDATOR_EVOLUTION_ENABLED)
+    show_predators = (
+        predators is not None
+        and len(predators) > 0
+        and config.BLACK_HOLE_ENABLED
+        and config.PREDATOR_EVOLUTION_ENABLED
+    )
     n_preds = len(predators) if show_predators else 0
 
     pad_x, pad_y = 14, 10
     line_h = font_body.get_linesize() + 3
     title_h = font_title.get_linesize() + 4
     label_col_w = 110  # width reserved for text labels
-    bar_w = 100   # width of each genome drift bar
-    bar_h = 8     # height of each bar
+    bar_w = 100  # width of each genome drift bar
+    bar_h = 8  # height of each bar
     starv_bar_h = 10
 
     # --- Compute boid stats ---
@@ -158,8 +169,7 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
     top_lineages = [(ids[top_sort[i]], counts[top_sort[i]]) for i in range(top_n)]
 
     # Full sorted distribution for population color bar
-    all_lineages_sorted = [(ids[top_sort[i]], counts[top_sort[i]])
-                           for i in range(len(ids))]
+    all_lineages_sorted = [(ids[top_sort[i]], counts[top_sort[i]]) for i in range(len(ids))]
 
     # Genome means and defaults
     genome_stats = []
@@ -180,24 +190,30 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
     bar_row_h = max(line_h, bar_h + 8)
 
     pop_bar_h = 14
-    total_rows = (1              # title
-                  + n_genome     # genome bars
-                  + 1            # spacer
-                  + 1            # diversity
-                  + n_lineage_rows  # top lineages
-                  + 1)           # population bar label
+    total_rows = (
+        1  # title
+        + n_genome  # genome bars
+        + 1  # spacer
+        + 1  # diversity
+        + n_lineage_rows  # top lineages
+        + 1
+    )  # population bar label
     panel_w = 320
-    panel_h = (pad_y * 2 + title_h + n_genome * bar_row_h
-               + (total_rows - n_genome) * line_h
-               + pop_bar_h + 10)
+    panel_h = (
+        pad_y * 2
+        + title_h
+        + n_genome * bar_row_h
+        + (total_rows - n_genome) * line_h
+        + pop_bar_h
+        + 10
+    )
 
     # Add height for predator section (side-by-side columns, fixed height)
     if show_predators:
         n_pred_genome = len(config.PREDATOR_GENOME_FIELDS)
         mass_bar_lines = (line_h + 2) if config.ACCRETION_HUNGER_ENABLED else 0
         # Height for ONE predator column (all predators same height)
-        single_pred_h = (2 * line_h + 2 + mass_bar_lines
-                         + n_pred_genome * bar_row_h)
+        single_pred_h = 2 * line_h + 2 + mass_bar_lines + n_pred_genome * bar_row_h
         pred_section_h = title_h + 4 + single_pred_h
         panel_h += pred_section_h
         # Widen panel for multiple predators (side-by-side columns)
@@ -227,8 +243,7 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
     # Title with selection count right-aligned
     title_surf = font_title.render("Star Genome", True, accent_col)
     panel.blit(title_surf, (pad_x, y))
-    gen_surf = font_body.render(
-        f"{sim.total_consumed} sel", True, dim_col)
+    gen_surf = font_body.render(f"{sim.total_consumed} sel", True, dim_col)
     panel.blit(gen_surf, (panel_w - pad_x - gen_surf.get_width(), y + 6))
     y += title_h
 
@@ -250,8 +265,7 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
             mean_frac = 0.5
 
         def_px = int(bx + default_frac * bar_w)
-        pygame.draw.line(panel, (120, 120, 130, 200),
-                         (def_px, by - 1), (def_px, by + bar_h + 1), 1)
+        pygame.draw.line(panel, (120, 120, 130, 200), (def_px, by - 1), (def_px, by + bar_h + 1), 1)
 
         mean_px = int(bx + mean_frac * bar_w)
         if mean_val > default:
@@ -263,8 +277,7 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
         if x1 > x0:
             pygame.draw.rect(panel, fill_color, (x0, by + 1, x1 - x0, bar_h - 2))
 
-        pygame.draw.circle(panel, (255, 255, 255, 240),
-                           (mean_px, by + bar_h // 2), 3)
+        pygame.draw.circle(panel, (255, 255, 255, 240), (mean_px, by + bar_h // 2), 3)
 
         val_str = f"{mean_val:.2f}" if abs(mean_val) < 10 else f"{mean_val:.1f}"
         val_surf = font_body.render(val_str, True, dim_col)
@@ -290,8 +303,7 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
         sy = y + 2
         pygame.draw.rect(panel, swatch_col, (sx, sy, 10, 10))
 
-        lin_surf = font_body.render(
-            f" #{lin_id}  {lin_count} stars ({pct:.0%})", True, text_col)
+        lin_surf = font_body.render(f" #{lin_id}  {lin_count} stars ({pct:.0%})", True, text_col)
         panel.blit(lin_surf, (sx + 14, y))
         y += line_h
 
@@ -303,8 +315,7 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
 
     pop_bar_x = pad_x
     pop_bar_total_w = panel_w - pad_x * 2
-    pygame.draw.rect(panel, bar_bg_col,
-                     (pop_bar_x, y, pop_bar_total_w, pop_bar_h))
+    pygame.draw.rect(panel, bar_bg_col, (pop_bar_x, y, pop_bar_total_w, pop_bar_h))
 
     cx = pop_bar_x
     for lin_id, lin_count in all_lineages_sorted:
@@ -323,15 +334,13 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
 
     if show_predators:
         # Separator line
-        pygame.draw.line(panel, sep_col,
-                         (pad_x, y), (panel_w - pad_x, y), 1)
+        pygame.draw.line(panel, sep_col, (pad_x, y), (panel_w - pad_x, y), 1)
         y += 4
 
         # Sub-header with death count right-aligned
         pred_title = font_title.render("Black Holes", True, accent_col)
         panel.blit(pred_title, (pad_x, y))
-        ev_surf = font_body.render(
-            f"{starvation_events_total} deaths", True, dim_col)
+        ev_surf = font_body.render(f"{starvation_events_total} deaths", True, dim_col)
         panel.blit(ev_surf, (panel_w - pad_x - ev_surf.get_width(), y + 6))
         y += title_h
 
@@ -354,15 +363,13 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
             col_bar_w = pred_col_w - col_label_w - 6
 
             # Starvation bar
-            starvation_frac = min(1.0,
-                                  pred.frames_since_last_kill / starvation_max)
+            starvation_frac = min(1.0, pred.frames_since_last_kill / starvation_max)
             lbl_surf = font_body.render("Hgr", True, dim_col)
             panel.blit(lbl_surf, (col_x, cy))
 
             bx = col_x + col_label_w
             by = cy + 1
-            pygame.draw.rect(panel, bar_bg_col,
-                             (bx, by, col_bar_w, starv_bar_h))
+            pygame.draw.rect(panel, bar_bg_col, (bx, by, col_bar_w, starv_bar_h))
 
             fill_w = max(0, int(starvation_frac * col_bar_w))
             if starvation_frac < 0.5:
@@ -375,21 +382,23 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
                 t = (starvation_frac - 0.8) / 0.2
                 pulse = 1.0
                 if starvation_frac > 0.9:
-                    pulse = 0.7 + 0.3 * abs(
-                        ((frame % 20) / 20.0) * 2.0 - 1.0)
-                fill_col = (min(255, int(255 * pulse)),
-                            int(60 * (1.0 - t) * pulse),
-                            int(20 * pulse), 240)
+                    pulse = 0.7 + 0.3 * abs(((frame % 20) / 20.0) * 2.0 - 1.0)
+                fill_col = (
+                    min(255, int(255 * pulse)),
+                    int(60 * (1.0 - t) * pulse),
+                    int(20 * pulse),
+                    240,
+                )
 
             if fill_w > 0:
-                pygame.draw.rect(panel, fill_col,
-                                 (bx + 1, by + 1, fill_w - 2, starv_bar_h - 2))
+                pygame.draw.rect(panel, fill_col, (bx + 1, by + 1, fill_w - 2, starv_bar_h - 2))
             cy += line_h + 2
 
             # Mass bar (accretion hunger)
             if config.ACCRETION_HUNGER_ENABLED:
-                mass_frac = ((pred.mass - config.BH_MASS_MIN)
-                             / max(1e-10, config.BH_MASS_MAX - config.BH_MASS_MIN))
+                mass_frac = (pred.mass - config.BH_MASS_MIN) / max(
+                    1e-10, config.BH_MASS_MAX - config.BH_MASS_MIN
+                )
                 mass_frac = max(0.0, min(1.0, mass_frac))
 
                 lbl_surf = font_body.render("Mas", True, dim_col)
@@ -397,8 +406,7 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
 
                 bx = col_x + col_label_w
                 by = cy + 1
-                pygame.draw.rect(panel, bar_bg_col,
-                                 (bx, by, col_bar_w, starv_bar_h))
+                pygame.draw.rect(panel, bar_bg_col, (bx, by, col_bar_w, starv_bar_h))
 
                 fill_w = max(0, int(mass_frac * col_bar_w))
                 mass_r = int(120 + 135 * mass_frac)
@@ -407,15 +415,12 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
                 mass_col = (mass_r, mass_g, mass_b, 220)
 
                 if fill_w > 0:
-                    pygame.draw.rect(panel, mass_col,
-                                     (bx + 1, by + 1,
-                                      fill_w - 2, starv_bar_h - 2))
+                    pygame.draw.rect(panel, mass_col, (bx + 1, by + 1, fill_w - 2, starv_bar_h - 2))
                 cy += line_h + 2
 
             # Genome drift bars (compact for column)
             pp = pred.params
-            for gi, (field_name, default, lo, hi) in enumerate(
-                    config.PREDATOR_GENOME_FIELDS):
+            for gi, (field_name, default, lo, hi) in enumerate(config.PREDATOR_GENOME_FIELDS):
                 label = _PRED_GENOME_LABELS[gi]
                 val = getattr(pp, field_name)
 
@@ -426,8 +431,7 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
 
                 bx = col_x + col_label_w
                 by = cy + 2
-                pygame.draw.rect(panel, bar_bg_col,
-                                 (bx, by, col_bar_w, bar_h))
+                pygame.draw.rect(panel, bar_bg_col, (bx, by, col_bar_w, bar_h))
 
                 range_span = hi - lo
                 if range_span > 0:
@@ -438,9 +442,9 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
                     val_frac = 0.5
 
                 def_px = int(bx + default_frac * col_bar_w)
-                pygame.draw.line(panel, (120, 120, 130, 200),
-                                 (def_px, by - 1),
-                                 (def_px, by + bar_h + 1), 1)
+                pygame.draw.line(
+                    panel, (120, 120, 130, 200), (def_px, by - 1), (def_px, by + bar_h + 1), 1
+                )
 
                 val_px = int(bx + val_frac * col_bar_w)
                 if val > default:
@@ -450,13 +454,9 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
                 x0 = min(def_px, val_px)
                 x1 = max(def_px, val_px)
                 if x1 > x0:
-                    pygame.draw.rect(panel, fill_color,
-                                     (x0, by + 1, x1 - x0,
-                                      bar_h - 2))
+                    pygame.draw.rect(panel, fill_color, (x0, by + 1, x1 - x0, bar_h - 2))
 
-                pygame.draw.circle(
-                    panel, (255, 255, 255, 240),
-                    (val_px, by + bar_h // 2), 3)
+                pygame.draw.circle(panel, (255, 255, 255, 240), (val_px, by + bar_h // 2), 3)
 
                 cy += bar_row_h
 
@@ -475,8 +475,10 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
 # HELP OVERLAY
 # ============================================================
 
-def draw_help_overlay(screen, alpha, font_title, font_body,
-                      screen_w, screen_h, num_stars, num_black_holes):
+
+def draw_help_overlay(
+    screen, alpha, font_title, font_body, screen_w, screen_h, num_stars, num_black_holes
+):
     """Draw a semi-transparent help panel on the right side of the screen."""
     if alpha <= 0:
         return
@@ -508,7 +510,7 @@ def draw_help_overlay(screen, alpha, font_title, font_body,
     title_h = font_title.get_linesize() + 4
 
     # Total lines: title + separator + controls + separator + "Status" + status
-    num_lines = (1 + 1 + len(controls) + 1 + 1 + len(status_lines))
+    num_lines = 1 + 1 + len(controls) + 1 + 1 + len(status_lines)
     panel_h = pad_y * 2 + title_h + num_lines * line_h
     panel_w = 320
 
@@ -552,7 +554,7 @@ def draw_help_overlay(screen, alpha, font_title, font_body,
 
     # Status separator
     y += line_h // 2
-    status_label = f"{chr(0x2500)*2} Status {chr(0x2500)*2}"
+    status_label = f"{chr(0x2500) * 2} Status {chr(0x2500) * 2}"
     sep2_surf = font_body.render(status_label, True, dim_col)
     panel.blit(sep2_surf, (pad_x, y))
     y += line_h

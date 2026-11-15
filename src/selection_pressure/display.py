@@ -50,8 +50,12 @@ def _windows_monitor_rects() -> list[Rect]:
 
     rects: list[Rect] = []
     callback_type = ctypes.WINFUNCTYPE(
-        ctypes.c_bool, ctypes.c_ulong, ctypes.c_ulong,
-        ctypes.POINTER(ctypes.wintypes.RECT), ctypes.c_double)
+        ctypes.c_bool,
+        ctypes.c_ulong,
+        ctypes.c_ulong,
+        ctypes.POINTER(ctypes.wintypes.RECT),
+        ctypes.c_double,
+    )
 
     def _collect(_monitor, _hdc, rect_ptr, _data):
         r = rect_ptr.contents
@@ -85,15 +89,17 @@ def choose_display(monitors: list[Rect], requested: str) -> int:
         secondary = [i for i, (x, y, _, _) in enumerate(monitors) if (x, y) != (0, 0)]
         if not secondary:
             return 0
-        return max(secondary, key=lambda i: (monitors[i][2] >= monitors[i][3],
-                                             monitors[i][2] * monitors[i][3]))
+        return max(
+            secondary,
+            key=lambda i: (monitors[i][2] >= monitors[i][3], monitors[i][2] * monitors[i][3]),
+        )
     if requested == "primary":
         return next((i for i, (x, y, _, _) in enumerate(monitors) if (x, y) == (0, 0)), 0)
     index = int(requested)
     if not 0 <= index < len(monitors):
         raise ValueError(
-            f"display {index} does not exist; found {len(monitors)} "
-            f"(valid: 0-{len(monitors) - 1})")
+            f"display {index} does not exist; found {len(monitors)} (valid: 0-{len(monitors) - 1})"
+        )
     return index
 
 

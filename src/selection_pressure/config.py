@@ -92,9 +92,9 @@ MAX_FORCE = 0.15
 # Try: (0.96, 0.975, 0.985) warm->cool shift
 #      (0.985, 0.96, 0.96)  cool->warm shift (red lingers)
 #      (0.975, 0.975, 0.975) uniform fade (no color shift)
-TRAIL_FADE_R = 0.970   # red fades fastest  -> trails lose warmth first
-TRAIL_FADE_G = 0.975   # green fades at normal rate
-TRAIL_FADE_B = 0.985   # blue lingers longest -> aging trails shift cool/purple
+TRAIL_FADE_R = 0.970  # red fades fastest  -> trails lose warmth first
+TRAIL_FADE_G = 0.975  # green fades at normal rate
+TRAIL_FADE_B = 0.985  # blue lingers longest -> aging trails shift cool/purple
 
 # GLOW_BASE_RADIUS: base pixel radius of each boid dot.
 # Larger = fatter dots, more visible trails, painterly look.
@@ -152,24 +152,44 @@ ACTIVE_PALETTE = 0
 # More keyframes = more color variety. Fewer = simpler gradients.
 PALETTES = {
     0: [  # Warm -> Cool (default)
-        (255, 120, 50), (255, 60, 90), (220, 50, 180),
-        (130, 60, 255), (60, 120, 255), (50, 200, 180),
+        (255, 120, 50),
+        (255, 60, 90),
+        (220, 50, 180),
+        (130, 60, 255),
+        (60, 120, 255),
+        (50, 200, 180),
     ],
     1: [  # Sunset -> Midnight
-        (255, 200, 50), (255, 130, 30), (255, 60, 60),
-        (180, 30, 100), (80, 20, 120), (20, 10, 80),
+        (255, 200, 50),
+        (255, 130, 30),
+        (255, 60, 60),
+        (180, 30, 100),
+        (80, 20, 120),
+        (20, 10, 80),
     ],
     2: [  # Earth -> Ocean
-        (180, 140, 60), (120, 160, 60), (60, 140, 80),
-        (40, 160, 140), (30, 120, 180), (20, 60, 140),
+        (180, 140, 60),
+        (120, 160, 60),
+        (60, 140, 80),
+        (40, 160, 140),
+        (30, 120, 180),
+        (20, 60, 140),
     ],
     3: [  # Neon
-        (255, 0, 100), (255, 0, 255), (100, 0, 255),
-        (0, 200, 255), (0, 255, 150), (200, 255, 0),
+        (255, 0, 100),
+        (255, 0, 255),
+        (100, 0, 255),
+        (0, 200, 255),
+        (0, 255, 150),
+        (200, 255, 0),
     ],
     4: [  # Monochrome (white-blue)
-        (255, 255, 255), (200, 220, 255), (150, 180, 255),
-        (100, 140, 255), (150, 180, 255), (200, 220, 255),
+        (255, 255, 255),
+        (200, 220, 255),
+        (150, 180, 255),
+        (100, 140, 255),
+        (150, 180, 255),
+        (200, 220, 255),
     ],
 }
 
@@ -422,9 +442,9 @@ NUM_STARS_MEGA = 8
 # Coordinates are fractions of WIDTH/HEIGHT for resolution independence.
 # spread_frac = Gaussian sigma as fraction of the smaller canvas dimension.
 STAR_CLUSTER_CENTERS = [
-    (0.35, 0.45, 0.15),   # Primary galactic center
-    (0.70, 0.30, 0.10),   # Secondary cluster
-    (0.55, 0.75, 0.08),   # Small satellite cluster
+    (0.35, 0.45, 0.15),  # Primary galactic center
+    (0.70, 0.30, 0.10),  # Secondary cluster
+    (0.55, 0.75, 0.08),  # Small satellite cluster
 ]
 
 # Nebula Fog (Perlin Noise concepts — smooth organic patterns)
@@ -439,10 +459,10 @@ NEBULA_OCTAVES = 8
 # Nebula tint colors — each generates a separate noise layer.
 # (RGB channel manipulation, additive color mixing)
 NEBULA_COLORS = [
-    (30, 10, 50),    # Deep purple
-    (20, 30, 60),    # Deep blue
-    (50, 15, 35),    # Dark pink/magenta
-    (40, 25, 10),    # Warm amber
+    (30, 10, 50),  # Deep purple
+    (20, 30, 60),  # Deep blue
+    (50, 15, 35),  # Dark pink/magenta
+    (40, 25, 10),  # Warm amber
 ]
 
 # Twinkle Effect (Animation & Time — sine-wave brightness)
@@ -473,12 +493,12 @@ TWINKLE_SPEED_RANGE = (0.3, 1.2)
 DEFENSIVE_LOCAL_THRESHOLD = 80  # local neighbors for defensive swirl
 
 # Defensive Formation visual + behavioral params
-DEFENSIVE_COHESION_EXTRA = 0.04 # Extra pull toward local center of mass
-DEFENSIVE_TANGENT_STRENGTH = 0.6   # Tangential swirl around predators
-DEFENSIVE_TANGENT_RADIUS = 200.0   # Distance within which swirl applies
-DEFENSIVE_SHIMMER_SPEED = 3.0      # Hz — silver flash oscillation
-DEFENSIVE_SHIMMER_AMOUNT = 0.3     # Brightness oscillation range
-DEFENSIVE_SILVER_BLEND = 0.25      # Blend toward silver color
+DEFENSIVE_COHESION_EXTRA = 0.04  # Extra pull toward local center of mass
+DEFENSIVE_TANGENT_STRENGTH = 0.6  # Tangential swirl around predators
+DEFENSIVE_TANGENT_RADIUS = 200.0  # Distance within which swirl applies
+DEFENSIVE_SHIMMER_SPEED = 3.0  # Hz — silver flash oscillation
+DEFENSIVE_SHIMMER_AMOUNT = 0.3  # Brightness oscillation range
+DEFENSIVE_SILVER_BLEND = 0.25  # Blend toward silver color
 DEFENSIVE_SILVER_COLOR = (220, 230, 255)
 DEFENSIVE_STREAK_TIGHTEN = 0.7  # Streak width multiplier (<1 = thinner)
 
@@ -541,11 +561,11 @@ TOURNAMENT_SIZE = 4
 # Higher weights = that factor matters more for parent selection.
 # Survival and predator distance are the strongest evolutionary signals
 # because they directly measure "did this boid's genes help it stay alive?"
-FITNESS_WEIGHT_SURVIVAL = 1.5    # frames alive since last respawn
-FITNESS_WEIGHT_NEIGHBORS = 0.5   # number of boids within cohesion_radius
-FITNESS_WEIGHT_SPEED = 0.3       # current speed as fraction of max_speed
+FITNESS_WEIGHT_SURVIVAL = 1.5  # frames alive since last respawn
+FITNESS_WEIGHT_NEIGHBORS = 0.5  # number of boids within cohesion_radius
+FITNESS_WEIGHT_SPEED = 0.3  # current speed as fraction of max_speed
 FITNESS_WEIGHT_PREDATOR_DIST = 1.5  # reward safe (but not hiding) distance
-FITNESS_WEIGHT_COHESION = 0.8    # reward boids with nearby neighbors (counters separation drift)
+FITNESS_WEIGHT_COHESION = 0.8  # reward boids with nearby neighbors (counters separation drift)
 FITNESS_ISOLATION_PENALTY = 0.5  # penalty for boids with zero neighbors
 
 # Predator distance scoring: optimal distance range (pixels).
@@ -568,8 +588,8 @@ POPULATION_TARGET = 800
 # CULL_BOTTOM_FRACTION with mutated offspring of top performers.
 # Genome-only replacement — position/velocity unchanged, no visual disruption.
 # 0 = disabled (evolution only via death-based selection).
-CULL_INTERVAL_FRAMES = 7200   # every 2 minutes at 60 FPS
-CULL_BOTTOM_FRACTION = 0.02   # replace bottom 2% with offspring of fittest
+CULL_INTERVAL_FRAMES = 7200  # every 2 minutes at 60 FPS
+CULL_BOTTOM_FRACTION = 0.02  # replace bottom 2% with offspring of fittest
 
 # --- Periodic Spawning (steady population growth) ---
 # Spawns new boids at regular intervals with evolved genes from fit parents.
@@ -577,7 +597,7 @@ CULL_BOTTOM_FRACTION = 0.02   # replace bottom 2% with offspring of fittest
 # Growth stops when POPULATION_TARGET is reached.
 PERIODIC_SPAWN_ENABLED = True
 PERIODIC_SPAWN_INTERVAL = 2700  # frames between spawns (45 sec at 60 FPS)
-PERIODIC_SPAWN_COUNT = 3        # boids per spawn event
+PERIODIC_SPAWN_COUNT = 3  # boids per spawn event
 
 # --- Animation ---
 # TARGET_FPS: target frames per second. 60 = smooth. 30 = lighter on CPU.
@@ -589,8 +609,6 @@ TARGET_FPS = 60
 SEED = 42
 
 
-
-
 # ============================================================
 # INJECTABLE PARAMETER DATACLASSES
 # ============================================================
@@ -600,6 +618,7 @@ SEED = 42
 # BoidsSimulation / BlackHolePredator (e.g. for headless experiments);
 # per-boid evolved values live in BoidsSimulation.per_boid_params.
 
+
 @dataclass
 class BoidParams:
     """Behavioral parameters for boid flocking.
@@ -608,6 +627,7 @@ class BoidParams:
     variation (GA genomes), pass arrays via BoidsSimulation.per_boid_params
     dict — keys match field names, values are numpy arrays of shape (N,).
     """
+
     # Core flocking
     separation_radius: float = SEPARATION_RADIUS
     alignment_radius: float = ALIGNMENT_RADIUS
@@ -638,6 +658,7 @@ class PredatorParams:
     Pass to BlackHolePredator to override global defaults.  Each predator
     can have its own PredatorParams, enabling per-predator evolved strategies.
     """
+
     # Movement
     speed: float = BLACK_HOLE_SPEED
     max_force: float = BLACK_HOLE_MAX_FORCE
@@ -671,14 +692,14 @@ class PredatorParams:
 
 GENOME_FIELDS = [
     ('separation_weight', SEPARATION_WEIGHT, 0.5, 15.0),
-    ('alignment_weight',  ALIGNMENT_WEIGHT,  0.05, 5.0),
-    ('cohesion_weight',   COHESION_WEIGHT,   0.02, 3.0),
+    ('alignment_weight', ALIGNMENT_WEIGHT, 0.05, 5.0),
+    ('cohesion_weight', COHESION_WEIGHT, 0.02, 3.0),
     ('separation_radius', SEPARATION_RADIUS, 10.0, 150.0),
-    ('alignment_radius',  ALIGNMENT_RADIUS,  15.0, 150.0),
-    ('cohesion_radius',   COHESION_RADIUS,   20.0, 250.0),
-    ('max_speed',         MAX_SPEED,         1.5, 8.0),
-    ('min_speed',         MIN_SPEED,         0.2, 3.0),
-    ('max_force',         MAX_FORCE,         0.03, 0.4),
+    ('alignment_radius', ALIGNMENT_RADIUS, 15.0, 150.0),
+    ('cohesion_radius', COHESION_RADIUS, 20.0, 250.0),
+    ('max_speed', MAX_SPEED, 1.5, 8.0),
+    ('min_speed', MIN_SPEED, 0.2, 3.0),
+    ('max_force', MAX_FORCE, 0.03, 0.4),
 ]
 
 # ============================================================
@@ -688,13 +709,13 @@ GENOME_FIELDS = [
 # Field names match PredatorParams dataclass attributes.
 
 PREDATOR_GENOME_FIELDS = [
-    ('speed',           BLACK_HOLE_SPEED,           2.0, 6.0),
-    ('max_force',       BLACK_HOLE_MAX_FORCE,       0.05, 0.25),
-    ('sight_radius',    BLACK_HOLE_SIGHT_RADIUS,    200.0, 800.0),
-    ('lunge_speed',     BLACK_HOLE_LUNGE_SPEED,     4.0, 8.0),
-    ('lunge_duration',  BLACK_HOLE_LUNGE_DURATION,  15, 80),
-    ('lunge_cooldown',  BLACK_HOLE_LUNGE_COOLDOWN,  40, 300),
-    ('consume_radius',  BLACK_HOLE_CONSUME_RADIUS,  10.0, 40.0),
+    ('speed', BLACK_HOLE_SPEED, 2.0, 6.0),
+    ('max_force', BLACK_HOLE_MAX_FORCE, 0.05, 0.25),
+    ('sight_radius', BLACK_HOLE_SIGHT_RADIUS, 200.0, 800.0),
+    ('lunge_speed', BLACK_HOLE_LUNGE_SPEED, 4.0, 8.0),
+    ('lunge_duration', BLACK_HOLE_LUNGE_DURATION, 15, 80),
+    ('lunge_cooldown', BLACK_HOLE_LUNGE_COOLDOWN, 40, 300),
+    ('consume_radius', BLACK_HOLE_CONSUME_RADIUS, 10.0, 40.0),
 ]
 
 
@@ -706,25 +727,25 @@ PREDATOR_GENOME_FIELDS = [
 # pressure and slowly regenerate, creating migration patterns.
 
 NEBULA_FIELDS_ENABLED = True
-NUM_NEBULA_CLOUDS = 6           # number of resource patches
-NEBULA_CLOUD_RADIUS = 200.0     # sigma of Gaussian density falloff (px)
+NUM_NEBULA_CLOUDS = 6  # number of resource patches
+NEBULA_CLOUD_RADIUS = 200.0  # sigma of Gaussian density falloff (px)
 NEBULA_CLOUD_MAX_DENSITY = 1.0  # peak density at center
-NEBULA_CLOUD_REGEN_RATE = 0.002 # density recovery per frame
+NEBULA_CLOUD_REGEN_RATE = 0.002  # density recovery per frame
 NEBULA_CLOUD_DEPLETION_RATE = 0.0005  # density lost per feeding boid per frame
 NEBULA_CLOUD_MIN_DENSITY = 0.1  # floor — clouds never fully deplete
-NEBULA_CLOUD_DRIFT_SPEED = 0.15 # slow drift (px/frame) to prevent camping
+NEBULA_CLOUD_DRIFT_SPEED = 0.15  # slow drift (px/frame) to prevent camping
 
 # --- Star Energy (Metabolism) ---
 # Each star has an internal energy that depletes over time.
 # Stars must overlap nebula clouds to feed.  Energy maps to brightness:
 # starving stars dim and redden, well-fed stars blaze.
 STAR_ENERGY_ENABLED = True
-STAR_ENERGY_MAX = 1.0           # full energy
-STAR_ENERGY_INITIAL = 0.7       # spawn energy
-STAR_ENERGY_DRAIN_RATE = 0.0008 # passive drain per frame (~75s to empty)
-STAR_ENERGY_FEED_RATE = 0.005   # energy gained per frame when inside nebula
-STAR_ENERGY_FEED_RADIUS = 180.0 # must be within this distance of cloud center
-STAR_ENERGY_LOW_THRESHOLD = 0.3 # below this: star dims, reddens, gets desperate
+STAR_ENERGY_MAX = 1.0  # full energy
+STAR_ENERGY_INITIAL = 0.7  # spawn energy
+STAR_ENERGY_DRAIN_RATE = 0.0008  # passive drain per frame (~75s to empty)
+STAR_ENERGY_FEED_RATE = 0.005  # energy gained per frame when inside nebula
+STAR_ENERGY_FEED_RADIUS = 180.0  # must be within this distance of cloud center
+STAR_ENERGY_LOW_THRESHOLD = 0.3  # below this: star dims, reddens, gets desperate
 
 # Fitness weight for energy level (rewards successful foragers)
 FITNESS_WEIGHT_ENERGY = 1.0
@@ -733,8 +754,8 @@ FITNESS_WEIGHT_ENERGY = 1.0
 # Stars steer toward the nearest high-density cloud.  Hungry stars
 # steer harder (desperation foraging).
 CHEMOTAXIS_ENABLED = True
-CHEMOTAXIS_STRENGTH = 0.08      # base steering force toward nearest nebula
-CHEMOTAXIS_HUNGER_MULT = 3.0    # hungry stars steer this many times harder
+CHEMOTAXIS_STRENGTH = 0.08  # base steering force toward nearest nebula
+CHEMOTAXIS_HUNGER_MULT = 3.0  # hungry stars steer this many times harder
 
 
 # ============================================================
@@ -746,13 +767,13 @@ CHEMOTAXIS_HUNGER_MULT = 3.0    # hungry stars steer this many times harder
 # between safety and starvation drives dynamic behavior.
 
 QUORUM_ENABLED = True
-QUORUM_SIGNAL_RADIUS = 150.0    # radius within which stars sense each other
-QUORUM_THRESHOLD = 200          # min neighbors to trigger fortress mode (tier 2)
-QUORUM_FORTRESS_COHESION = 0.06 # extra cohesion pull when in fortress
+QUORUM_SIGNAL_RADIUS = 150.0  # radius within which stars sense each other
+QUORUM_THRESHOLD = 200  # min neighbors to trigger fortress mode (tier 2)
+QUORUM_FORTRESS_COHESION = 0.06  # extra cohesion pull when in fortress
 QUORUM_FORTRESS_SPEED_MULT = 0.7  # slow down in fortress (conserve energy)
 QUORUM_ENERGY_DRAIN_MULT = 0.5  # fortress halves energy drain (safety bonus)
-QUORUM_BREAK_ENERGY = 0.25      # energy below this forces break from fortress
-QUORUM_VISUAL_PULSE = True      # fortress stars pulse in unison
+QUORUM_BREAK_ENERGY = 0.25  # energy below this forces break from fortress
+QUORUM_VISUAL_PULSE = True  # fortress stars pulse in unison
 
 
 # ============================================================
@@ -763,23 +784,25 @@ QUORUM_VISUAL_PULSE = True      # fortress stars pulse in unison
 # mass decay (nimbler but weaker).  Creates visible predator lifecycles.
 
 ACCRETION_HUNGER_ENABLED = True
-BH_MASS_INITIAL = 1.0          # starting mass multiplier
-BH_MASS_MIN = 0.4              # minimum mass (nimble but weak)
-BH_MASS_MAX = 2.5              # maximum mass (powerful but slow)
-BH_MASS_GAIN_PER_KILL = 0.10   # mass gained per star consumed
-BH_MASS_DECAY_RATE = 0.0003    # mass lost per frame when not eating
-BH_MASS_DECAY_GRACE = 120      # frames after a kill before decay starts
+BH_MASS_INITIAL = 1.0  # starting mass multiplier
+BH_MASS_MIN = 0.4  # minimum mass (nimble but weak)
+BH_MASS_MAX = 2.5  # maximum mass (powerful but slow)
+BH_MASS_GAIN_PER_KILL = 0.10  # mass gained per star consumed
+BH_MASS_DECAY_RATE = 0.0003  # mass lost per frame when not eating
+BH_MASS_DECAY_GRACE = 120  # frames after a kill before decay starts
 # Scaling exponents: how mass affects behavior
-BH_MASS_SPEED_EXPONENT = -0.5      # speed ~ mass^(-0.5): heavier = slower
-BH_MASS_RADIUS_EXPONENT = 1.0      # radii ~ mass^(1.0): heavier = bigger (linear)
-BH_MASS_FORCE_EXPONENT = 0.3       # steering ~ mass^(0.3)
+BH_MASS_SPEED_EXPONENT = -0.5  # speed ~ mass^(-0.5): heavier = slower
+BH_MASS_RADIUS_EXPONENT = 1.0  # radii ~ mass^(1.0): heavier = bigger (linear)
+BH_MASS_FORCE_EXPONENT = 0.3  # steering ~ mass^(0.3)
 BH_MASS_LUNGE_SPEED_EXPONENT = -0.3  # lunge speed penalty when heavy
 
 # ============================================================
 # ECOSYSTEM GENOME FIELDS (appended after constants are defined)
 # ============================================================
 # Evolved per-boid traits for nebula/quorum systems.
-GENOME_FIELDS.extend([
-    ('chemotaxis_strength', CHEMOTAXIS_STRENGTH, 0.01, 0.3),
-    ('quorum_threshold',    float(QUORUM_THRESHOLD), 50.0, 400.0),
-])
+GENOME_FIELDS.extend(
+    [
+        ('chemotaxis_strength', CHEMOTAXIS_STRENGTH, 0.01, 0.3),
+        ('quorum_threshold', float(QUORUM_THRESHOLD), 50.0, 400.0),
+    ]
+)

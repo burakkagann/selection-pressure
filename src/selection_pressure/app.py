@@ -23,9 +23,9 @@ MIN_BLACK_HOLES = 1
 MAX_STARS = 2000
 MIN_STARS = 10
 STAR_STEP = 50
-HELP_DISPLAY_SECS = 5   # help overlay stays fully visible this long
-HELP_FADE_SPEED = 3     # alpha lost per frame while fading out
-COLOR_CYCLE_SECS = 30   # palette cycle length used by the boid colouring
+HELP_DISPLAY_SECS = 5  # help overlay stays fully visible this long
+HELP_FADE_SPEED = 3  # alpha lost per frame while fading out
+COLOR_CYCLE_SECS = 30  # palette cycle length used by the boid colouring
 
 
 @dataclass
@@ -50,11 +50,15 @@ class Options:
 # Factories
 # ============================================================
 
+
 def make_sim(width, height, num_stars=None, seed=None):
     """Create a BoidsSimulation using the current config toggles."""
     sim = BoidsSimulation(
         config.NUM_BOIDS if num_stars is None else num_stars,
-        width, height, config.SEED if seed is None else seed)
+        width,
+        height,
+        config.SEED if seed is None else seed,
+    )
     sim.params.attractor_enabled = config.ATTRACTOR_ENABLED
     sim.params.noise_influence = config.NOISE_INFLUENCE
     return sim
@@ -68,9 +72,9 @@ def _spawn_point(index, width, height):
 
 def make_predator(index, width, height):
     """Create the ``index``-th black hole at its fixed spawn corner."""
-    return BlackHolePredator(width, height,
-                             start_pos=_spawn_point(index, width, height),
-                             seed=123 + index)
+    return BlackHolePredator(
+        width, height, start_pos=_spawn_point(index, width, height), seed=123 + index
+    )
 
 
 def make_predators(width, height, count=None):
@@ -84,6 +88,7 @@ def make_predators(width, height, count=None):
 # ============================================================
 # Profiler
 # ============================================================
+
 
 class FrameProfiler:
     """Per-section frame timing, printed every ``interval`` frames."""
@@ -113,8 +118,10 @@ class FrameProfiler:
         if self._count < self._interval:
             return
         total = sum(self._timings.values())
-        print(f"\n  [PROFILE] avg over {self._count} frames "
-              f"({total / self._count * 1000:.1f} ms/frame):")
+        print(
+            f"\n  [PROFILE] avg over {self._count} frames "
+            f"({total / self._count * 1000:.1f} ms/frame):"
+        )
         for label, t in sorted(self._timings.items(), key=lambda x: -x[1]):
             pct = t / total * 100 if total > 0 else 0
             print(f"    {label:<24} {t / self._count * 1000:6.2f} ms  ({pct:4.1f}%)")
@@ -125,6 +132,7 @@ class FrameProfiler:
 # ============================================================
 # Application
 # ============================================================
+
 
 class App:
     """The running installation: window, world state and frame loop."""
@@ -163,8 +171,7 @@ class App:
         index = display.choose_display(monitors, self.opts.display)
         self.monitor = monitors[index]
         x, y, w, h = self.monitor
-        print(f"  Display [{index}] {w}x{h} at ({x},{y}) "
-              f"of {len(monitors)} monitor(s)")
+        print(f"  Display [{index}] {w}x{h} at ({x},{y}) of {len(monitors)} monitor(s)")
 
         if self.opts.windowed:
             self.fullscreen = False
@@ -192,7 +199,8 @@ class App:
         self.galaxy_bg = self.twinkle_data = self.twinkle_overlay = None
         if config.GALAXY_BG_ENABLED:
             self.galaxy_bg, self.twinkle_data = background.generate_galaxy_background(
-                w, h, seed=self.seed)
+                w, h, seed=self.seed
+            )
             if config.TWINKLE_ENABLED and self.twinkle_data:
                 self.twinkle_overlay = pygame.Surface((w, h))
                 self.twinkle_overlay.set_colorkey((0, 0, 0))
@@ -217,8 +225,7 @@ class App:
             display.place_window(x, y)
             self.screen = pygame.display.set_mode((w, h), pygame.NOFRAME)
         else:
-            self.screen = pygame.display.set_mode(
-                (int(w * 0.8), int(h * 0.8)), pygame.RESIZABLE)
+            self.screen = pygame.display.set_mode((int(w * 0.8), int(h * 0.8)), pygame.RESIZABLE)
         self._on_resize()
 
     def _on_resize(self):
@@ -334,8 +341,9 @@ class App:
 
         prof.begin("draw_boids")
         if not self.paused or frame == 0:
-            rendering.draw_boids(self.boid_layer, trail, sim, frame,
-                                 config.TARGET_FPS * COLOR_CYCLE_SECS, predators)
+            rendering.draw_boids(
+                self.boid_layer, trail, sim, frame, config.TARGET_FPS * COLOR_CYCLE_SECS, predators
+            )
         prof.end()
 
         prof.begin("draw_black_holes")
@@ -348,8 +356,9 @@ class App:
             rendering.draw_predator_explosions(trail, self.predator_explosions)
 
         prof.begin("composite_display")
-        rendering.composite_display(screen, trail, self.galaxy_bg, self.twinkle_overlay,
-                                    self.twinkle_data, frame)
+        rendering.composite_display(
+            screen, trail, self.galaxy_bg, self.twinkle_overlay, self.twinkle_data, frame
+        )
         prof.end()
 
         if config.NEBULA_FIELDS_ENABLED and sim.nebula is not None:
@@ -371,22 +380,40 @@ class App:
     def _draw_overlays(self):
         screen, sim = self.screen, self.sim
         if self.opts.show_hud:
-            hud.render_hud(screen, self.font_hud, sim, self.frame, self.predators,
-                           self.clock.get_fps())
+            hud.render_hud(
+                screen, self.font_hud, sim, self.frame, self.predators, self.clock.get_fps()
+            )
             hud.render_elapsed_time(screen, self.elapsed_seconds())
             hud.render_participant_hint(screen)
         if config.EVOLUTION_ENABLED:
-            hud.render_evolution_panel(screen, self.font_title, self.font_hud, sim,
-                                       self.frame, predators=self.predators,
-                                       starvation_events_total=self.starvation_total)
+            hud.render_evolution_panel(
+                screen,
+                self.font_title,
+                self.font_hud,
+                sim,
+                self.frame,
+                predators=self.predators,
+                starvation_events_total=self.starvation_total,
+            )
         if self.show_help and self.help_alpha > 0:
             w, h = self.size
-            hud.draw_help_overlay(screen, self.help_alpha, self.font_title, self.font_hud,
-                                  w, h, sim.num, len(self.predators))
+            hud.draw_help_overlay(
+                screen,
+                self.help_alpha,
+                self.font_title,
+                self.font_hud,
+                w,
+                h,
+                sim.num,
+                len(self.predators),
+            )
 
         # Startup help fades out on its own after a few seconds.
-        if self.help_auto_fade and self.show_help and \
-                self.frame > HELP_DISPLAY_SECS * config.TARGET_FPS:
+        if (
+            self.help_auto_fade
+            and self.show_help
+            and self.frame > HELP_DISPLAY_SECS * config.TARGET_FPS
+        ):
             self.help_alpha = max(0, self.help_alpha - HELP_FADE_SPEED)
             if self.help_alpha <= 0:
                 self.show_help = self.help_auto_fade = False
