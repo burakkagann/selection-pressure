@@ -125,8 +125,9 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
         return
 
     # Use cached panel surface when possible (10 updates/sec is enough)
+    # (a negative age means the frame counter was reset, so rebuild)
     if (_evo_panel_cache is not None
-            and frame - _evo_cache_frame < 6):
+            and 0 <= frame - _evo_cache_frame < 6):
         screen.blit(_evo_panel_cache, _evo_panel_pos)
         return
 
