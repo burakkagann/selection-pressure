@@ -4,20 +4,15 @@ SELECTION PRESSURE - Galaxy Background
 Precomputed star field + nebula fog rendered at startup.
 Zero per-frame cost except one surface blit.
 
-Demonstrates knowledge transfer across modules:
-  Module 1.1.1 (Color Basics)  — RGB channel manipulation, additive mixing
-  Module 2.1.4 (Stars)         — Gaussian clusters, brightness variation,
-                                  integer array indexing, cross patterns
-  Module 3.4.1 (Convolution)   — Gaussian kernel concept for glow halos
-  Module 4.1.3 (Mandelbrot)    — Sine-wave color mapping
-  Module 6.1.1 (Perlin Noise)  — Smooth coherent noise for nebula fog
-  Module 8     (Animation)     — Time-based sine oscillation for twinkling
+Techniques: Gaussian star clusters with cross-shaped bright stars and
+Gaussian glow halos, sine-wave colour tinting, multi-octave value noise for
+the nebula fog (additively mixed per RGB channel), and sine-wave twinkling.
 """
 
 import numpy as np
 import pygame
-from . import config
 
+from . import config
 
 # ============================================================
 # STAR FIELD GENERATION
@@ -40,12 +35,12 @@ def generate_star_field(width, height, seed=42):
     stars = np.zeros((width, height, 3), dtype=np.float32)
 
     # --- Layer 1: Dense distant stars (uniform distribution) ---
-    # [Module 2.1.4 Transfer] simple_star.py: random uniform placement
+    # Random uniform placement
     dx = rng.integers(0, width, size=config.NUM_STARS_DISTANT)
     dy = rng.integers(0, height, size=config.NUM_STARS_DISTANT)
     brightness = rng.integers(20, 60, size=config.NUM_STARS_DISTANT).astype(
         np.float32)
-    # [Module 1.1.1 Transfer] Per-channel tinting for warm/cool star colors
+    # Per-channel tinting for warm/cool star colors
     tint_r = rng.uniform(0.8, 1.0, size=config.NUM_STARS_DISTANT).astype(
         np.float32)
     tint_b = rng.uniform(0.9, 1.2, size=config.NUM_STARS_DISTANT).astype(
@@ -58,7 +53,7 @@ def generate_star_field(width, height, seed=42):
         stars[x, y, 2] = max(stars[x, y, 2], b * tint_b[i])
 
     # --- Layer 2: Medium Gaussian-clustered stars ---
-    # [Module 2.1.4 Transfer] gaussian_cluster.py + multi_cluster_solution.py
+    # Gaussian star clusters
     stars_per_cluster = config.NUM_STARS_MEDIUM // max(
         1, len(config.STAR_CLUSTER_CENTERS))
     for cx_frac, cy_frac, spread_frac in config.STAR_CLUSTER_CENTERS:
@@ -81,7 +76,7 @@ def generate_star_field(width, height, seed=42):
                 stars[x + 1, y] = np.maximum(stars[x + 1, y], b * 0.5)
 
     # --- Layer 3: Bright foreground stars with cross patterns ---
-    # [Module 2.1.4 Transfer] brightness_variation.py cross pattern
+    # Cross-shaped bright stars
     bx = rng.integers(4, width - 4, size=config.NUM_STARS_BRIGHT)
     by = rng.integers(4, height - 4, size=config.NUM_STARS_BRIGHT)
     bb = rng.integers(180, 256, size=config.NUM_STARS_BRIGHT).astype(
@@ -90,7 +85,7 @@ def generate_star_field(width, height, seed=42):
     for i in range(config.NUM_STARS_BRIGHT):
         x, y = int(bx[i]), int(by[i])
         b = bb[i]
-        # [Module 4.1.3 Transfer] Sine-wave color mapping for star tinting
+        # Sine-wave color mapping for star tinting
         phase = rng.uniform(0, 2 * np.pi)
         tint = np.array([
             0.8 + 0.2 * np.sin(phase),
@@ -108,7 +103,7 @@ def generate_star_field(width, height, seed=42):
             stars[nx, ny] = np.maximum(stars[nx, ny], b * 0.25 * tint)
 
     # --- Layer 4: Mega stars with Gaussian glow halos ---
-    # [Module 3.4.1 Transfer] Gaussian kernel stamp (convolution concept)
+    # Gaussian kernel stamp (convolution concept)
     twinkle_candidates = []
     mx_pos = rng.integers(8, width - 8, size=config.NUM_STARS_MEGA)
     my_pos = rng.integers(8, height - 8, size=config.NUM_STARS_MEGA)
@@ -149,7 +144,7 @@ def generate_star_field(width, height, seed=42):
         })
 
     # Select twinkle stars and assign phase/frequency
-    # [Module 8 Transfer] Per-element phase offsets for natural variation
+    # Per-element phase offsets for natural variation
     twinkle_data = None
     if config.TWINKLE_ENABLED and config.TWINKLE_COUNT > 0:
         n_twinkle = min(config.TWINKLE_COUNT, len(twinkle_candidates))
@@ -177,12 +172,8 @@ def generate_nebula(width, height, seed=42):
 
     Uses NumPy random grids upscaled with pygame.transform.smoothscale
     (same technique as the bloom pipeline) to create organic fog without
-    external noise libraries.
-
-    [Module 6.1.1 Transfer] Coherent noise concepts — smooth random fields
-    [Module 1.1.1 Transfer] Per-channel RGB tinting, additive color mixing
+    external noise libraries.  Each octave has its own seeded generator.
     """
-    rng = np.random.default_rng(seed)
     nebula = np.zeros((width, height, 3), dtype=np.float32)
 
     # Gaussian cluster mask: concentrate nebula around galactic centers
@@ -255,15 +246,15 @@ def generate_galaxy_background(width, height, seed=42):
     """
     print("  Generating galaxy background...")
 
-    # Nebula fog (Module 6.1.1 + 1.1.1)
+    # Nebula fog
     print("    Nebula fog (smooth noise + cluster mask)...")
     nebula = generate_nebula(width, height, seed=seed + 100)
 
-    # Star field (Module 2.1.4 + 4.1.3 + 3.4.1)
+    # Star field
     print("    Star field (Gaussian clusters + cross patterns + glow halos)...")
     stars, twinkle_data = generate_star_field(width, height, seed=seed + 200)
 
-    # [Module 1.1.1 Transfer] Additive color mixing — stars are light ON nebula
+    # Additive color mixing — stars are light ON nebula
     combined = nebula.astype(np.float32) + stars.astype(np.float32)
     combined = np.clip(combined, 0, 255).astype(np.uint8)
 
@@ -281,8 +272,6 @@ def generate_galaxy_background(width, height, seed=42):
 def update_twinkle_overlay(overlay, twinkle_data, frame, fps):
     """
     Animate twinkling stars with per-star sine-wave brightness modulation.
-
-    [Module 8 Transfer] Time-based sine oscillation with phase offsets.
 
     Stamps modulated star glows onto a cleared overlay surface each frame.
     The overlay is composited additively onto the screen.

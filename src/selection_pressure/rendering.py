@@ -8,10 +8,12 @@ Every function reads visual parameters from the config module.
 Simulation state is passed in — no simulation logic lives here.
 """
 
+import colorsys
+
 import numpy as np
 import pygame
-from . import config
 
+from . import config
 
 # ============================================================
 # CACHES (avoid per-frame allocation and recomputation)
@@ -199,36 +201,32 @@ def fade_trails(trail_surface):
 # BOID DRAWING
 # ============================================================
 
+# Golden-ratio hue spacing gives perceptually distinct lineage colours.
+_GOLDEN_RATIO_FRAC = 0.618033988749895
+
+
+def lineage_color(lineage_id):
+    """RGB (0-255 ints) for one lineage: a vivid hue on a fixed colour ring."""
+    hue = (float(lineage_id) * _GOLDEN_RATIO_FRAC) % 1.0
+    r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+    return int(r * 255), int(g * 255), int(b * 255)
+
+
 def _lineage_colors(lineage_ids, num_boids):
-    """Map lineage_ids to unique hues on a fixed color ring.
-
-    Each lineage_id maps to a distinct HSV hue; saturation and value are
-    fixed at 1.0 so colors are vivid.  Returns (N, 3) float32 RGB array.
-    """
-    # Use golden-ratio spacing for perceptually distinct hues
-    golden = 0.618033988749895
-    hues = (lineage_ids.astype(np.float64) * golden) % 1.0
-    # HSV->RGB inline (S=1, V=1)
+    """Vectorised lineage hues (S=1, V=1).  Returns (N, 3) float32 RGB in 0-255."""
+    hues = (lineage_ids.astype(np.float64) * _GOLDEN_RATIO_FRAC) % 1.0
     h6 = hues * 6.0
-    sector = h6.astype(int) % 6
-    frac = h6 - np.floor(h6)
-    r = np.where(sector == 0, 1.0,
-        np.where(sector == 1, 1.0 - frac,
-        np.where(sector == 2, 0.0,
-        np.where(sector == 3, 0.0,
-        np.where(sector == 4, frac, 1.0)))))
-    g = np.where(sector == 0, frac,
-        np.where(sector == 1, 1.0,
-        np.where(sector == 2, 1.0,
-        np.where(sector == 3, 1.0 - frac,
-        np.where(sector == 4, 0.0, 0.0)))))
-    b = np.where(sector == 0, 0.0,
-        np.where(sector == 1, 0.0,
-        np.where(sector == 2, frac,
-        np.where(sector == 3, 1.0,
-        np.where(sector == 4, 1.0, 1.0 - frac)))))
-    return np.stack([r * 255, g * 255, b * 255], axis=1).astype(np.float32)
-
+    sector = (h6.astype(int) % 6)[:, np.newaxis]
+    frac = (h6 - np.floor(h6))[:, np.newaxis]
+    one, zero = np.ones_like(frac), np.zeros_like(frac)
+    # (r, g, b) for each of the six hue sectors, as in colorsys.hsv_to_rgb
+    table = [
+        (one, frac, zero), (one - frac, one, zero), (zero, one, frac),
+        (zero, one - frac, one), (frac, zero, one), (one, zero, one - frac),
+    ]
+    rgb = np.select([sector == k for k in range(6)],
+                    [np.concatenate(t, axis=1) for t in table])
+    return (rgb * 255).astype(np.float32)
 
 def draw_boids(boid_layer, trail_surface, sim, frame, total_frames,
                predators):
@@ -719,7 +717,7 @@ def composite_display(screen, trail_surface, galaxy_bg, twinkle_overlay,
         # Layer 1: Static galaxy background (stars + nebula fog)
         screen.blit(galaxy_bg, (0, 0))
 
-        # Layer 1.5: Twinkling stars (Module 8: time-based animation)
+        # Layer 1.5: Twinkling stars
         if (config.TWINKLE_ENABLED and twinkle_data
                 and twinkle_overlay is not None):
             from .background import update_twinkle_overlay
@@ -731,7 +729,7 @@ def composite_display(screen, trail_surface, galaxy_bg, twinkle_overlay,
         # Layer 2: Boid trails composited additively on top of galaxy.
         # Black trail pixels (faded areas) add nothing — galaxy shows
         # through.  Active trails glow brighter than the background.
-        # [Module 1.1.1 Transfer] Additive color mixing.
+        # Additive color mixing.
         screen.blit(trail_surface, (0, 0),
                     special_flags=pygame.BLEND_RGB_ADD)
     else:

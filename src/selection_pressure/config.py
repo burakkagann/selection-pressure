@@ -9,8 +9,7 @@ and PredatorParams dataclasses bundle behavioral parameters for injection into
 simulation classes, enabling headless GA episodes with per-individual configs.
 """
 
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 # ============================================================
 # PARAMETERS - Tweak these to experiment!
@@ -26,7 +25,8 @@ HEIGHT = 1080
 # --- Boids (Core Flocking) ---
 # Number of boids in the simulation.
 # More boids = denser flocks but heavier computation (O(n^2) distance checks).
-# Sweet spot: 200-600. Above 800 may drop frames. Below 100 feels sparse.
+# The population grows toward POPULATION_TARGET over time (periodic spawning),
+# so a small start lets the piece build up. Above ~800 may drop frames.
 NUM_BOIDS = 50
 
 # SEPARATION_RADIUS: how close is "too close" — boids steer away within this range.
@@ -85,15 +85,10 @@ MIN_SPEED = 0.5
 MAX_FORCE = 0.15
 
 # --- Trails (Visual Persistence) ---
-# TRAIL_FADE_RATE: overall fade multiplier applied per frame (0.0-1.0).
-# Only used when per-channel fading is disabled (all three channel rates are equal).
-# Try: 0.92 (short sparkles) to 0.995 (slow ghostly fading).
-TRAIL_FADE_RATE = 0.975
-
 # TRAIL_FADE_RGB: per-channel fade rates (R, G, B). Each channel fades independently.
 # Red fading fastest and blue lingering creates a warm-to-cool trail color shift:
 # fresh trails keep their original hue, aging trails drift toward blue/purple.
-# Set all three equal to disable the effect (same as uniform TRAIL_FADE_RATE).
+# Set all three equal for a uniform fade. Try: 0.92 (short sparkles) to 0.995 (ghostly).
 # Try: (0.96, 0.975, 0.985) warm->cool shift
 #      (0.985, 0.96, 0.96)  cool->warm shift (red lingers)
 #      (0.975, 0.975, 0.975) uniform fade (no color shift)
@@ -149,7 +144,7 @@ BLOOM_DOWNSCALE = 4
 # Try: 1 (slow breathe) to 8 (rapid kaleidoscope).
 COLOR_CYCLES = 8
 
-# ACTIVE_PALETTE: which palette to start with (0-4). Switch live with keys 1-5.
+# ACTIVE_PALETTE: which palette to use (0-4).
 ACTIVE_PALETTE = 0
 
 # Each palette is a list of (R, G, B) keyframes that boids interpolate through.
@@ -176,11 +171,6 @@ PALETTES = {
         (255, 255, 255), (200, 220, 255), (150, 180, 255),
         (100, 140, 255), (150, 180, 255), (200, 220, 255),
     ],
-}
-
-PALETTE_NAMES = {
-    0: "Warm->Cool", 1: "Sunset->Midnight", 2: "Earth->Ocean",
-    3: "Neon", 4: "Monochrome",
 }
 
 # --- Flow Field (Curl Noise) ---
@@ -416,10 +406,9 @@ LENS_FALLOFF = 1.5
 # --- Galaxy Background (Precomputed at Startup) ---
 # A static star field + nebula fog rendered behind boid trails.
 # Computed once — zero per-frame cost except one surface blit.
-# Demonstrates knowledge transfer from Modules 1, 2, 3, 4, 6, 8.
 GALAXY_BG_ENABLED = True
 
-# Star Field (Module 2.1.4: Stars — Gaussian clusters, brightness variation)
+# Star Field (Stars — Gaussian clusters, brightness variation)
 # Distant stars: single-pixel dim background scattered uniformly.
 NUM_STARS_DISTANT = 2000
 # Medium stars: Gaussian-clustered around galactic centers, 1-2 px.
@@ -438,7 +427,7 @@ STAR_CLUSTER_CENTERS = [
     (0.55, 0.75, 0.08),   # Small satellite cluster
 ]
 
-# Nebula Fog (Module 6.1.1: Perlin Noise concepts — smooth organic patterns)
+# Nebula Fog (Perlin Noise concepts — smooth organic patterns)
 # Maximum per-channel brightness for nebula pixels.
 # Keep low (30-50) so nebula doesn't overwhelm boid trails.
 NEBULA_MAX_BRIGHTNESS = 60
@@ -448,7 +437,7 @@ NEBULA_GRID_SIZE = 48
 NEBULA_OCTAVES = 8
 
 # Nebula tint colors — each generates a separate noise layer.
-# (Module 1.1.1: RGB channel manipulation, additive color mixing)
+# (RGB channel manipulation, additive color mixing)
 NEBULA_COLORS = [
     (30, 10, 50),    # Deep purple
     (20, 30, 60),    # Deep blue
@@ -456,7 +445,7 @@ NEBULA_COLORS = [
     (40, 25, 10),    # Warm amber
 ]
 
-# Twinkle Effect (Module 8: Animation & Time — sine-wave brightness)
+# Twinkle Effect (Animation & Time — sine-wave brightness)
 TWINKLE_ENABLED = True
 # How many stars twinkle. Kept small for performance.
 TWINKLE_COUNT = 25
@@ -552,7 +541,7 @@ TOURNAMENT_SIZE = 4
 # Higher weights = that factor matters more for parent selection.
 # Survival and predator distance are the strongest evolutionary signals
 # because they directly measure "did this boid's genes help it stay alive?"
-FITNESS_WEIGHT_SURVIVAL = 1.5    # frames alive since last respawn (reduced from 2.0)
+FITNESS_WEIGHT_SURVIVAL = 1.5    # frames alive since last respawn
 FITNESS_WEIGHT_NEIGHBORS = 0.5   # number of boids within cohesion_radius
 FITNESS_WEIGHT_SPEED = 0.3       # current speed as fraction of max_speed
 FITNESS_WEIGHT_PREDATOR_DIST = 1.5  # reward safe (but not hiding) distance
@@ -600,12 +589,6 @@ TARGET_FPS = 60
 SEED = 42
 
 
-# ============================================================
-# DERIVED
-# ============================================================
-
-# Points to parent repo directory (screenshots saved at the repo root)
-SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # ============================================================
@@ -613,9 +596,9 @@ SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ============================================================
 # These bundle behavioral parameters into objects that can be passed to
 # simulation classes.  Defaults match the module-level constants above.
-# A future genetic algorithm can create per-individual BoidParams /
-# PredatorParams with evolved values, and BoidsSimulation / BlackHolePredator
-# will use them instead of the global defaults.
+# Custom BoidParams / PredatorParams instances can be passed to
+# BoidsSimulation / BlackHolePredator (e.g. for headless experiments);
+# per-boid evolved values live in BoidsSimulation.per_boid_params.
 
 @dataclass
 class BoidParams:
@@ -742,7 +725,6 @@ STAR_ENERGY_DRAIN_RATE = 0.0008 # passive drain per frame (~75s to empty)
 STAR_ENERGY_FEED_RATE = 0.005   # energy gained per frame when inside nebula
 STAR_ENERGY_FEED_RADIUS = 180.0 # must be within this distance of cloud center
 STAR_ENERGY_LOW_THRESHOLD = 0.3 # below this: star dims, reddens, gets desperate
-STAR_ENERGY_CRITICAL = 0.1      # below this: star is visibly dying
 
 # Fitness weight for energy level (rewards successful foragers)
 FITNESS_WEIGHT_ENERGY = 1.0

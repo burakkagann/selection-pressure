@@ -17,10 +17,10 @@ Key design for GA integration:
 """
 
 import numpy as np
+
 from . import config as cfg
 from .config import BoidParams, PredatorParams
 from .nebula import NebulaField
-
 
 # Max-speed multiplier for boids inside any black hole's flee radius.
 FLEE_SPEED_BOOST = 1.15

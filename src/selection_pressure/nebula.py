@@ -13,6 +13,7 @@ the canvas (toroidal wrapping).  All computation is vectorized NumPy.
 """
 
 import numpy as np
+
 from . import config as cfg
 
 

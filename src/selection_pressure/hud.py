@@ -9,14 +9,13 @@ import numpy as np
 import pygame
 
 from . import config
-
+from .rendering import lineage_color
 
 # ============================================================
 # HUD (Heads-Up Display)
 # ============================================================
 
-def render_hud(screen, font, sim, frame, predators,
-               actual_fps, wall_elapsed=0.0):
+def render_hud(screen, font, sim, frame, predators, actual_fps):
     """Render the top-left HUD status line."""
     hud = font.render(
         f"FPS: {actual_fps:.0f} | Stars: {sim.num} | "
@@ -146,7 +145,6 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
     label_col_w = 110  # width reserved for text labels
     bar_w = 100   # width of each genome drift bar
     bar_h = 8     # height of each bar
-    starv_bar_w = 100  # starvation bar width
     starv_bar_h = 10
 
     # --- Compute boid stats ---
@@ -235,7 +233,7 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
     y += title_h
 
     # --- Genome drift bars ---
-    for label, mean_val, default, lo, hi, std_val in genome_stats:
+    for label, mean_val, default, lo, hi, _std in genome_stats:
         lbl_surf = font_body.render(label, True, text_col)
         panel.blit(lbl_surf, (pad_x, y))
 
@@ -284,20 +282,9 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
     y += line_h
 
     # --- Top lineages with color swatches ---
-    golden = 0.618033988749895
-    for rank, (lin_id, lin_count) in enumerate(top_lineages):
+    for lin_id, lin_count in top_lineages:
         pct = lin_count / max(sim.num, 1)
-        hue = (float(lin_id) * golden) % 1.0
-        h6 = hue * 6.0
-        sector = int(h6) % 6
-        frac = h6 - int(h6)
-        if sector == 0:   rgb = (1.0, frac, 0.0)
-        elif sector == 1: rgb = (1.0 - frac, 1.0, 0.0)
-        elif sector == 2: rgb = (0.0, 1.0, frac)
-        elif sector == 3: rgb = (0.0, 1.0 - frac, 1.0)
-        elif sector == 4: rgb = (frac, 0.0, 1.0)
-        else:             rgb = (1.0, 0.0, 1.0 - frac)
-        swatch_col = (int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255))
+        swatch_col = lineage_color(lin_id)
 
         sx = pad_x
         sy = y + 2
@@ -326,17 +313,7 @@ def render_evolution_panel(screen, font_title, font_body, sim, frame=0,
             seg_w = pop_bar_x + pop_bar_total_w - cx
         if seg_w <= 0:
             break
-        hue = (float(lin_id) * golden) % 1.0
-        h6 = hue * 6.0
-        sector = int(h6) % 6
-        frac = h6 - int(h6)
-        if sector == 0:   rgb = (1.0, frac, 0.0)
-        elif sector == 1: rgb = (1.0 - frac, 1.0, 0.0)
-        elif sector == 2: rgb = (0.0, 1.0, frac)
-        elif sector == 3: rgb = (0.0, 1.0 - frac, 1.0)
-        elif sector == 4: rgb = (frac, 0.0, 1.0)
-        else:             rgb = (1.0, 0.0, 1.0 - frac)
-        seg_col = (int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255))
+        seg_col = lineage_color(lin_id)
         pygame.draw.rect(panel, seg_col, (cx, y + 1, seg_w, pop_bar_h - 2))
         cx += seg_w
 
