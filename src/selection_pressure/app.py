@@ -9,24 +9,30 @@ Simulation logic lives in ``simulation.py``; drawing in ``rendering.py`` and
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import pygame
 
-from . import background, config, display, hud, rendering
+from . import background, blackhole_gl, config, display, hud, rendering, ui
+from .history import EvolutionHistory
 from .recorder import Recorder
 from .simulation import BlackHolePredator, BoidsSimulation
+from .tuning import TuningPanel
 
 MAX_BLACK_HOLES = 3
 MIN_BLACK_HOLES = 1
 MAX_STARS = 2000
 MIN_STARS = 10
 STAR_STEP = 50
-HELP_DISPLAY_SECS = 5  # help overlay stays fully visible this long
-HELP_FADE_SPEED = 3  # alpha lost per frame while fading out
+START_HINT_SECS = 6  # the 'I panel  H controls' hint shows this long, then fades
+START_HINT_FADE_SECS = 1.5
 COLOR_CYCLE_SECS = 30  # palette cycle length used by the boid colouring
+RECORD_SIZE = (1920, 1080)  # --record without an explicit --size
+BLACK_HOLE_STYLES = (*blackhole_gl.STYLES, "classic")
+PANELS = ("strip", "full", "off")  # the order I cycles through
 
 
 @dataclass
@@ -34,15 +40,16 @@ class Options:
     """Runtime options, normally built by ``cli.parse_args``."""
 
     display: str = "primary"
-    windowed: bool = False
-    window_size: tuple[int, int] | None = None
+    fullscreen: bool = False  # borderless fullscreen instead of a window
+    window_size: tuple[int, int] | None = None  # window or recording size
     seed: int = config.SEED
     stars: int = config.NUM_BOIDS
     black_holes: int = config.NUM_BLACK_HOLES
-    fps: int = config.TARGET_FPS
+    black_hole_style: str = config.BLACK_HOLE_STYLE  # particle or classic
+    panel: str = "strip"  # evolution panel at start: strip, full or off
+    panel_scale: float = 1.0  # larger panels for clips that get scaled down
     frames: int | None = None
-    show_hud: bool = True
-    kiosk: bool = False
+    kiosk: bool = False  # exhibition: no start hint; visitor hint and clock on
     profile: bool = False
     screenshot_dir: Path = Path(".")
     record: Path | None = None  # render offline to this .mp4 / .gif and exit
@@ -83,7 +90,7 @@ def make_predator(index, width, height):
 
 def make_predators(width, height, count=None):
     """Create ``count`` black holes (config default when None)."""
-    count = config.NUM_BLACK_HOLES if count is None else count
+    count = min(config.NUM_BLACK_HOLES if count is None else count, MAX_BLACK_HOLES)
     if not config.BLACK_HOLE_ENABLED or count <= 0:
         return []
     return [make_predator(i, width, height) for i in range(count)]
@@ -151,15 +158,20 @@ class App:
         if options.kiosk:
             display.minimize_console()
         self.screen = self._open_window()
-        pygame.display.set_caption("SELECTION PRESSURE [SPACE=pause, R=reset, H=help]")
+        pygame.display.set_caption("Selection Pressure  (H for controls)")
         self.clock = pygame.time.Clock()
 
-        self.font_hud = pygame.font.SysFont("consolas", 20)
-        self.font_title = pygame.font.SysFont("consolas", 28, bold=True)
-        self.font_hint = pygame.font.SysFont("consolas", 18)
-        self.font_clock = pygame.font.SysFont("consolas", 32)
-        hud.reset_cache()
+        self.ui = ui.UI(self.size[1], options.panel_scale)
+        self.hud = hud.Hud(self.ui)
+        self.history = EvolutionHistory()
+        self.panel = options.panel if options.panel in PANELS else "strip"
         self.lens_maps = rendering.precompute_lens_maps()
+
+        # GPU black holes: created on first use, rebuilt when the size changes.
+        self.bh_style = options.black_hole_style
+        self.gpu = None
+        self.gpu_error = None
+        self.tuning = TuningPanel(on_style_click=self.cycle_black_hole_style)
 
         self._create_surfaces()
         self.reset()
@@ -167,9 +179,10 @@ class App:
         self.running = True
         self.paused = False
         self.screenshot_count = 0
-        self.show_help = True
-        self.help_alpha = 255
-        self.help_auto_fade = True
+        self.screenshot_requested = False
+        self.show_help = False
+        self.started = time.monotonic()
+        self.show_start_hint = not options.kiosk and options.record is None
 
     # ---- window and surfaces ------------------------------------------
 
@@ -180,17 +193,22 @@ class App:
         x, y, w, h = self.monitor
         print(f"  Display [{index}] {w}x{h} at ({x},{y}) of {len(monitors)} monitor(s)")
 
-        if self.opts.windowed:
+        if self.opts.record is not None:
+            # Recording renders off-screen (see run()), so any size works.
             self.fullscreen = False
-            size = self.opts.window_size or (int(w * 0.8), int(h * 0.8))
-            display.place_window(x + (w - size[0]) // 2, y + (h - size[1]) // 2)
-            return pygame.display.set_mode(size, pygame.RESIZABLE)
+            return pygame.display.set_mode(self.opts.window_size or RECORD_SIZE)
 
-        # Borderless window covering the monitor: unlike exclusive
-        # fullscreen it stays visible when another screen has focus.
-        self.fullscreen = True
-        display.place_window(x, y)
-        return pygame.display.set_mode((w, h), pygame.NOFRAME)
+        if self.opts.fullscreen:
+            # Borderless window covering the monitor: unlike exclusive
+            # fullscreen it stays visible when another screen has focus.
+            self.fullscreen = True
+            display.place_window(x, y)
+            return pygame.display.set_mode((w, h), pygame.NOFRAME)
+
+        self.fullscreen = False
+        size = self.opts.window_size or (int(w * 0.8), int(h * 0.8))
+        display.place_window(x + (w - size[0]) // 2, y + (h - size[1]) // 2)
+        return pygame.display.set_mode(size, pygame.RESIZABLE)
 
     @property
     def size(self):
@@ -198,6 +216,9 @@ class App:
 
     def _create_surfaces(self):
         w, h = self.size
+        self._release_gpu()
+        self.ui.resize(h)
+        self.hud.invalidate()
         self.trail_surface = pygame.Surface((w, h))
         self.trail_surface.fill((0, 0, 0))
         self.boid_layer = pygame.Surface((w, h))
@@ -224,6 +245,8 @@ class App:
         self.wall_pause_begin = None
         self.predator_explosions = []
         self.starvation_total = 0
+        self.history.clear()
+        self.hud.invalidate()
 
     def toggle_fullscreen(self):
         x, y, w, h = self.monitor
@@ -243,9 +266,43 @@ class App:
             pred.resize(w, h)
         print(f"  [DISPLAY] {w}x{h} {'fullscreen' if self.fullscreen else 'windowed'}")
 
+    # ---- GPU black holes -----------------------------------------------
+
+    def _gpu_ready(self):
+        """True when the current style is drawn by a working GPU renderer."""
+        if self.bh_style not in blackhole_gl.STYLES or self.gpu_error:
+            return False
+        if self.gpu is None:
+            self.gpu = blackhole_gl.ShaderBlackHole(*self.size)
+            if not self.gpu.available:
+                self.gpu_error = self.gpu.error
+                self.gpu = None
+                self.bh_style = "classic"
+                print(f"  [BLACK HOLES] GPU style unavailable, using 'classic': {self.gpu_error}")
+                return False
+            print(f"  [BLACK HOLES] style '{self.bh_style}' on {self.gpu.renderer_name}")
+        return True
+
+    def _release_gpu(self):
+        if self.gpu is not None:
+            self.gpu.close()
+            self.gpu = None
+
+    def cycle_black_hole_style(self):
+        """Switch to the next black hole style (the GPU style is skipped without a GPU)."""
+        styles = BLACK_HOLE_STYLES if not self.gpu_error else ("classic",)
+        index = styles.index(self.bh_style) if self.bh_style in styles else -1
+        self.bh_style = styles[(index + 1) % len(styles)]
+        print(f"  [BLACK HOLES] style '{self.bh_style}'")
+
+    def close(self):
+        self._release_gpu()
+
     # ---- input --------------------------------------------------------
 
     def handle_event(self, event):
+        if self.tuning.handle_event(event):
+            return
         if event.type == pygame.QUIT:
             self.running = False
         elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
@@ -255,6 +312,7 @@ class App:
             self.handle_key(event.key)
 
     def handle_key(self, key):
+        self.hud.invalidate()  # panels show the change at once, even when paused
         if key in (pygame.K_ESCAPE, pygame.K_q):
             self.running = False
         elif key == pygame.K_SPACE:
@@ -266,10 +324,11 @@ class App:
             self.toggle_fullscreen()
         elif key == pygame.K_h:
             self.show_help = not self.show_help
-            self.help_alpha = 255
-            self.help_auto_fade = False
+            self.show_start_hint = False
+        elif key == pygame.K_i:
+            self.cycle_panel()
         elif key == pygame.K_s:
-            self.save_screenshot()
+            self.screenshot_requested = True  # saved by draw(), before the panels
         elif key == pygame.K_RIGHTBRACKET:
             self.add_black_hole()
         elif key == pygame.K_LEFTBRACKET:
@@ -282,6 +341,14 @@ class App:
         elif key in (pygame.K_MINUS, pygame.K_KP_MINUS):
             self.sim.remove_boids(min(STAR_STEP, self.sim.num - MIN_STARS))
             print(f"  [STARS] {self.sim.num}")
+        elif key == pygame.K_m:
+            self.cycle_black_hole_style()
+        elif key == pygame.K_g:
+            self.tuning.toggle()
+            if self.tuning.visible:
+                self.show_help = False
+        elif key == pygame.K_d and self.tuning.visible:
+            self.tuning.dump(self.bh_style)
 
     def toggle_pause(self):
         self.paused = not self.paused
@@ -291,6 +358,11 @@ class App:
             self.wall_paused_total += time.monotonic() - self.wall_pause_begin
             self.wall_pause_begin = None
         print(f"  [{'PAUSED' if self.paused else 'RUNNING'}]")
+
+    def cycle_panel(self):
+        """I: strip -> timeline -> off."""
+        self.panel = PANELS[(PANELS.index(self.panel) + 1) % len(PANELS)]
+        self.show_start_hint = False
 
     def add_black_hole(self):
         if config.BLACK_HOLE_ENABLED and len(self.predators) < MAX_BLACK_HOLES:
@@ -302,8 +374,13 @@ class App:
             self.predators.pop()
         print(f"  [BLACK HOLES] {len(self.predators)}")
 
-    def save_screenshot(self):
-        """Save the trail layer (the artwork without overlays) as a PNG."""
+    def save_screenshot(self, surface=None):
+        """Save ``surface`` (the screen by default) as a numbered PNG.
+
+        The S key saves from inside :meth:`draw`, after the artwork is
+        composed and before any panel is drawn on top.
+        """
+        surface = self.screen if surface is None else surface
         out_dir = self.opts.screenshot_dir
         out_dir.mkdir(parents=True, exist_ok=True)
         while True:
@@ -311,7 +388,7 @@ class App:
             path = out_dir / f"sp_screenshot_{self.screenshot_count:03d}.png"
             if not path.exists():
                 break
-        pygame.image.save(self.trail_surface, str(path))
+        pygame.image.save(surface, str(path))
         print(f"  [SAVED] {path}")
 
     # ---- frame --------------------------------------------------------
@@ -335,12 +412,15 @@ class App:
             explosions = self.sim.check_predator_starvation(predators, self.frame)
             self.predator_explosions.extend(explosions)
             self.starvation_total += len(explosions)
+        self.history.maybe_sample(self.sim, self.frame)
         self.frame += 1
 
     def draw(self):
         """Render one frame onto the screen."""
         screen, trail, prof = self.screen, self.trail_surface, self.prof
         sim, predators, frame = self.sim, self.predators, self.frame
+        # The GPU style owns the black hole visual; the 2D predator stages are skipped.
+        gpu = self._gpu_ready()
 
         prof.begin("fade_trails")
         rendering.fade_trails(trail)
@@ -353,13 +433,16 @@ class App:
             )
         prof.end()
 
-        prof.begin("draw_black_holes")
-        rendering.draw_black_holes(trail, predators, frame)
-        prof.end()
+        if not gpu:
+            prof.begin("draw_black_holes")
+            rendering.draw_black_holes(trail, predators, frame)
+            prof.end()
 
         if config.EVOLUTION_ENABLED and sim.birth_flashes:
             rendering.draw_birth_flashes(trail, sim.birth_flashes)
-        if self.predator_explosions:
+        if gpu:
+            self.predator_explosions.clear()
+        elif self.predator_explosions:
             rendering.draw_predator_explosions(trail, self.predator_explosions)
 
         prof.begin("composite_display")
@@ -370,60 +453,57 @@ class App:
 
         if config.NEBULA_FIELDS_ENABLED and sim.nebula is not None:
             rendering.draw_nebula_clouds(screen, sim.nebula, frame)
-        rendering.stamp_void_on_screen(screen, predators)
+        if not gpu:
+            rendering.stamp_void_on_screen(screen, predators)
 
         prof.begin("apply_bloom")
         rendering.apply_bloom(screen, trail)
         prof.end()
 
-        prof.begin("apply_lensing")
-        rendering.apply_lensing(screen, predators, self.lens_maps)
+        if gpu:
+            prof.begin("gpu_black_holes")
+            self.gpu.render(screen, predators, frame)
+        else:
+            prof.begin("apply_lensing")
+            rendering.apply_lensing(screen, predators, self.lens_maps)
         prof.end()
+
+        if self.screenshot_requested:
+            self.screenshot_requested = False
+            self.save_screenshot(screen)
 
         prof.begin("overlays")
         self._draw_overlays()
         prof.end()
 
     def _draw_overlays(self):
-        screen, sim = self.screen, self.sim
-        if self.opts.show_hud:
-            hud.render_hud(
-                screen, self.font_hud, sim, self.frame, self.predators, self.clock.get_fps()
-            )
-            hud.render_elapsed_time(screen, self.elapsed_seconds(), self.font_clock)
-            hud.render_participant_hint(screen, self.font_hint)
-        if config.EVOLUTION_ENABLED:
-            hud.render_evolution_panel(
-                screen,
-                self.font_title,
-                self.font_hud,
-                sim,
-                self.frame,
-                predators=self.predators,
-                starvation_events_total=self.starvation_total,
-            )
-        if self.show_help and self.help_alpha > 0:
-            w, h = self.size
-            hud.draw_help_overlay(
-                screen,
-                self.help_alpha,
-                self.font_title,
-                self.font_hud,
-                w,
-                h,
-                sim.num,
-                len(self.predators),
-            )
+        screen, h = self.screen, self.hud
+        bottom = screen.get_height() - self.ui.px(24)
+        right = None  # right edge for the start hint
+        if config.EVOLUTION_ENABLED and self.panel != "off":
+            args = (screen, self.sim, self.predators, self.starvation_total)
+            if self.panel == "strip":
+                bottom = h.draw_strip(*args, self.frame).top - self.ui.px(12)
+            else:
+                right = h.draw_timeline(*args, self.history, self.frame).left - self.ui.px(16)
 
-        # Startup help fades out on its own after a few seconds.
-        if (
-            self.help_auto_fade
-            and self.show_help
-            and self.frame > HELP_DISPLAY_SECS * config.TARGET_FPS
-        ):
-            self.help_alpha = max(0, self.help_alpha - HELP_FADE_SPEED)
-            if self.help_alpha <= 0:
-                self.show_help = self.help_auto_fade = False
+        if self.opts.kiosk:
+            h.draw_visitor_hint(screen, bottom)
+            h.draw_clock(screen, self.elapsed_seconds(), bottom)
+        elif self.show_start_hint:
+            age = time.monotonic() - self.started
+            alpha = 255 * min(
+                1.0, (START_HINT_SECS + START_HINT_FADE_SECS - age) / START_HINT_FADE_SECS
+            )
+            if alpha <= 0:
+                self.show_start_hint = False
+            else:
+                h.draw_start_hint(screen, int(alpha), bottom, right)
+
+        if self.show_help:
+            h.draw_help(screen)
+        note = "GPU unavailable: see console" if self.gpu_error else ""
+        self.tuning.draw(screen, self.bh_style, self.ui, note)
 
     def record(self):
         """Render ``record_seconds`` of video offline, after an optional warm-up.
@@ -431,16 +511,17 @@ class App:
         Frames are produced as fast as possible and encoded at ``fps``, so the
         result is smooth even on a machine that cannot render in real time.
         """
-        fps = self.opts.fps
+        fps = config.TARGET_FPS
         warmup = int(self.opts.warmup_seconds * fps)
         total = int(self.opts.record_seconds * fps)
-        self.show_help = False
+        self.show_help = self.show_start_hint = False
         if warmup:
             print(f"  Warming up for {warmup} frames...")
-            for _ in range(warmup):
+            for i in range(warmup):
                 pygame.event.pump()
                 self.step()
-                self.draw()
+                if i >= warmup - 3 * fps:  # trails need only the last few seconds
+                    self.draw()
         recorder = Recorder(self.opts.record, self.size, fps)
         print(f"  Recording {total} frames to {self.opts.record}")
         try:
@@ -463,7 +544,7 @@ class App:
             return
         w, h = self.size
         print(f"\n  SELECTION PRESSURE  {w}x{h}, {self.sim.num} stars, seed {self.seed}")
-        print("  ESC/Q quit  SPACE pause  R reset  F fullscreen  S screenshot  H help\n")
+        print("  H controls  I evolution panel  ESC quit\n")
         frames_left = self.opts.frames
         while self.running:
             for event in pygame.event.get():
@@ -475,7 +556,7 @@ class App:
             self.draw()
 
             pygame.display.flip()
-            self.clock.tick(self.opts.fps)
+            self.clock.tick(config.TARGET_FPS)
             self.prof.tick()
 
             if frames_left is not None:
@@ -487,8 +568,16 @@ class App:
 def run(options: Options) -> None:
     """Initialise pygame, run the installation and shut down cleanly."""
     display.enable_dpi_awareness()
+    if options.record is not None:
+        # No visible window: the clip can be larger than the monitor, e.g. a
+        # 1080x1920 portrait video on a landscape screen.
+        os.environ["SDL_VIDEODRIVER"] = "dummy"
     pygame.init()
     try:
-        App(options).run()
+        app = App(options)
+        try:
+            app.run()
+        finally:
+            app.close()
     finally:
         pygame.quit()

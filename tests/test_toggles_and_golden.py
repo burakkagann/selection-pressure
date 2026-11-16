@@ -65,7 +65,6 @@ def test_pipeline_runs_with_flag_off(flag, monkeypatch, tmp_path):
     try:
         app = App(
             Options(
-                windowed=True,
                 window_size=(320, 240),
                 stars=60,
                 black_holes=2,

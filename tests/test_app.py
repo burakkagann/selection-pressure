@@ -13,19 +13,15 @@ def make_app(tmp_path):
 
     def factory(**overrides):
         pygame.init()
-        opts = app.Options(
-            windowed=True,
-            window_size=(480, 270),
-            stars=80,
-            black_holes=2,
-            screenshot_dir=tmp_path,
-            **overrides,
-        )
+        settings = {"window_size": (480, 270), "stars": 80, "black_holes": 2}
+        opts = app.Options(**{**settings, **overrides}, screenshot_dir=tmp_path)
         instance = app.App(opts)
         created.append(instance)
         return instance
 
     yield factory
+    for instance in created:
+        instance.close()
     pygame.quit()
 
 
@@ -105,13 +101,69 @@ def test_screenshots_never_overwrite(make_app, tmp_path):
     (tmp_path / "sp_screenshot_001.png").write_bytes(b"keep me")
     a = make_app()
     advance(a, 3)
-    a.save_screenshot()
+    a.handle_key(pygame.K_s)
+    advance(a, 1)
     assert (tmp_path / "sp_screenshot_001.png").read_bytes() == b"keep me"
     assert (tmp_path / "sp_screenshot_002.png").stat().st_size > 0
 
 
+def test_screenshot_leaves_out_the_panels(make_app, tmp_path):
+    a = make_app()
+    advance(a, 3)
+    a.handle_key(pygame.K_h)  # controls card in the middle of the screen
+    a.handle_key(pygame.K_s)
+    advance(a, 1)  # the screenshot is taken during this frame
+    shot = pygame.surfarray.array3d(pygame.image.load(str(tmp_path / "sp_screenshot_001.png")))
+    screen = pygame.surfarray.array3d(a.screen)
+    corner = (slice(0, 40), slice(0, 40))  # no panel reaches the top-left corner
+    middle = (slice(200, 280), slice(120, 150))  # under the controls card
+    np.testing.assert_array_equal(shot[corner], screen[corner])
+    assert not np.array_equal(shot[middle], screen[middle])
+
+
+def test_panel_key_cycles_strip_timeline_off(make_app):
+    a = make_app()
+    assert a.panel == "strip"
+    seen = []
+    for _ in range(3):
+        advance(a, 2)
+        seen.append(a.panel)
+        a.handle_key(pygame.K_i)
+    assert seen == ["strip", "full", "off"] and a.panel == "strip"
+
+
+def test_help_card_and_tuning_panel_do_not_overlap(make_app):
+    a = make_app()
+    a.handle_key(pygame.K_h)
+    assert a.show_help
+    a.handle_key(pygame.K_g)
+    assert a.tuning.visible and not a.show_help
+    advance(a, 2)
+
+
+def test_history_is_sampled_and_cleared_on_reset(make_app):
+    a = make_app()
+    a.history.interval = 5
+    a.history.clear()
+    advance(a, 21)
+    assert len(a.history) == 5  # frames 0, 5, 10, 15, 20
+    a.handle_key(pygame.K_r)
+    assert len(a.history) == 0
+
+
+@pytest.mark.parametrize("size", [(320, 240), (1080, 1350), (1920, 1080)])
+def test_every_view_draws_at_any_size(make_app, size):
+    a = make_app(window_size=size)
+    a.opts.kiosk = True  # visitor hint and clock (set late: kiosk minimises the console)
+    for panel in app.PANELS:
+        a.panel = panel
+        a.show_help = True
+        a.tuning.visible = True
+        advance(a, 7)  # past the panel cache
+
+
 def test_cli_runs_a_fixed_number_of_frames():
-    assert cli.main(["--windowed", "400x300", "--frames", "15", "--stars", "40"]) == 0
+    assert cli.main(["--window", "400x300", "--frames", "15", "--stars", "40"]) == 0
 
 
 def test_cli_reports_a_missing_display(capsys):

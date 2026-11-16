@@ -79,6 +79,10 @@ def list_monitors() -> list[Rect]:
     return [(0, 0, w, h) for w, h in pygame.display.get_desktop_sizes()]
 
 
+class DisplayError(ValueError):
+    """The requested monitor does not exist."""
+
+
 def choose_display(monitors: list[Rect], requested: str) -> int:
     """Pick a monitor index.
 
@@ -97,7 +101,7 @@ def choose_display(monitors: list[Rect], requested: str) -> int:
         return next((i for i, (x, y, _, _) in enumerate(monitors) if (x, y) == (0, 0)), 0)
     index = int(requested)
     if not 0 <= index < len(monitors):
-        raise ValueError(
+        raise DisplayError(
             f"display {index} does not exist; found {len(monitors)} (valid: 0-{len(monitors) - 1})"
         )
     return index

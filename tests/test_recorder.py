@@ -24,7 +24,7 @@ def test_missing_ffmpeg_is_reported(tmp_path, monkeypatch):
 @pytest.mark.parametrize("suffix", [".mp4", ".gif"])
 def test_cli_records_a_short_clip(tmp_path, suffix):
     out = tmp_path / f"clip{suffix}"
-    args = ["--windowed", "320x240", "--stars", "40", "--fps", "20"]
+    args = ["--size", "320x240", "--stars", "40"]
     assert cli.main([*args, "--record", str(out), "--duration", "1"]) == 0
     probe = subprocess.run(
         [

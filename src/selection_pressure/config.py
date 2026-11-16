@@ -25,9 +25,10 @@ HEIGHT = 1080
 # --- Boids (Core Flocking) ---
 # Number of boids in the simulation.
 # More boids = denser flocks but heavier computation (O(n^2) distance checks).
-# The population grows toward POPULATION_TARGET over time (periodic spawning),
-# so a small start lets the piece build up. Above ~800 may drop frames.
-NUM_BOIDS = 50
+# The population grows toward POPULATION_TARGET over time (periodic spawning).
+# 400 gives the black holes enough to hunt from the first second, so selection
+# starts at once. Above ~800 may drop frames.
+NUM_BOIDS = 400
 
 # SEPARATION_RADIUS: how close is "too close" — boids steer away within this range.
 # Larger = boids keep more personal space, flock spreads out.
@@ -65,18 +66,22 @@ ALIGNMENT_WEIGHT = 1.0
 # Try: 0.2 (scattered mist) to 2.0 (dense globules).
 COHESION_WEIGHT = 0.2
 
+# Motion speeds below (boids, black holes, accretion, noise, nebula drift) are
+# scaled about 1.45x from the original 1080p tuning, for the 4K exhibition
+# wall.  Multiply them all by 0.69 to get the slower original pace.
+#
 # MAX_SPEED: absolute speed cap for each boid (pixels/frame).
 # Higher = faster, more energetic motion (trails stretch longer).
 # Lower = slow, meditative drift.
 # Try: 1.5 (slow jellyfish) to 8.0 (frantic insects).
-MAX_SPEED = 2.8
+MAX_SPEED = 4.07
 
 # MIN_SPEED: minimum speed floor (pixels/frame). Boids below this are boosted
 # back up, preventing any boid from becoming stationary — especially useful for
 # respawned boids at edges with no nearby neighbors to steer toward.
 # 0 = disabled (boids can stop completely).
 # Try: 0.3 (barely drifting) to 1.5 (always visibly moving).
-MIN_SPEED = 0.5
+MIN_SPEED = 0.73
 
 # MAX_FORCE: maximum steering force per frame (acceleration cap).
 # Higher = boids turn sharply, snappy reactions.
@@ -209,7 +214,7 @@ NOISE_SCALE = 0.003
 # Higher = wind changes rapidly, more energetic motion.
 # Lower = slow-shifting currents, meditative feel.
 # Try: 0.005 (glacial) to 0.08 (stormy).
-NOISE_SPEED = 0.05
+NOISE_SPEED = 0.066
 
 # --- Attractor (Invisible Orbiting Magnet) ---
 # ATTRACTOR_ENABLED: if True, an invisible point orbits the center and gently
@@ -242,14 +247,19 @@ BLACK_HOLE_ENABLED = True
 
 # NUM_BLACK_HOLES: how many independent predators roam the canvas.
 # More = more chaos, boids constantly fleeing in different directions.
-# Try: 1 (single threat) to 4 (overwhelming predation).
-NUM_BLACK_HOLES = 1
+# Try: 1 (single threat) to 3 (overwhelming predation); 3 is the maximum.
+NUM_BLACK_HOLES = 2
+
+# --kiosk starts like the original exhibition: a sparse sky with one black hole
+# that fills up over about three hours of periodic spawning.
+KIOSK_STARS = 50
+KIOSK_BLACK_HOLES = 1
 
 # BLACK_HOLE_SPEED: cruising speed of predator (pixels/frame).
 # Should be close to but slightly below MAX_SPEED so boids can barely escape.
 # Higher = relentless hunter. Lower = lazy prowler boids can outrun.
 # Try: 2.0 (slow stalker) to 4.5 (nearly as fast as boids).
-BLACK_HOLE_SPEED = 2.5
+BLACK_HOLE_SPEED = 3.63
 
 # BLACK_HOLE_MAX_FORCE: predator steering agility (acceleration cap).
 # Higher = tighter turns, can corner boids better.
@@ -301,7 +311,7 @@ BLACK_HOLE_LUNGE_RADIUS = 180.0
 # BLACK_HOLE_LUNGE_SPEED: burst speed during a lunge (pixels/frame).
 # Must be > MAX_SPEED for the predator to actually catch fleeing boids.
 # Try: 4.5 (barely faster) to 8.0 (lightning strike).
-BLACK_HOLE_LUNGE_SPEED = 4.0
+BLACK_HOLE_LUNGE_SPEED = 5.81
 
 # BLACK_HOLE_LUNGE_DURATION: how many frames the lunge burst lasts.
 # Longer = sustained chase. Shorter = quick stab.
@@ -390,12 +400,12 @@ ACCRETION_LIFETIME = 60
 # Particles spin faster as they spiral inward (angular momentum conservation).
 # Higher = faster orbiting. Lower = slow graceful arcs.
 # Try: 0.08 (slow orbit) to 0.25 (rapid spinning).
-ACCRETION_SPIN_SPEED = 0.15
+ACCRETION_SPIN_SPEED = 0.218
 
 # ACCRETION_INFALL_RATE: how quickly particles spiral inward (pixels/frame radius shrink).
 # Higher = fast collapse into the void. Lower = particles linger at distance.
 # Try: 0.3 (slow drift) to 1.5 (rapid infall).
-ACCRETION_INFALL_RATE = 0.7
+ACCRETION_INFALL_RATE = 1.016
 
 # --- Gravitational Lensing ---
 # LENS_ENABLED: if True, the pixel field around each black hole is visually
@@ -423,20 +433,110 @@ LENS_STRENGTH = 30
 # Try: 1.5 (natural gravity-like) to 2.5 (concentrated near void).
 LENS_FALLOFF = 1.5
 
+# ============================================================
+# GPU BLACK HOLES (moderngl / GLSL)
+# ============================================================
+# BLACK_HOLE_STYLE: how the predators are drawn (--classic picks classic, and
+# the M key switches while running).
+#   'particle' -- N-body style glowing particle accretion disk with a warm
+#                 colour ramp and a dark evacuated centre.  See BH_PD_* below.
+#                 Needs OpenGL 3.3 and the moderngl package.
+#   'classic'  -- the original 2D look (void, rings, accretion glow and the
+#                 screen-space lens configured above).  Needs no GPU, and is
+#                 used automatically when the GPU style cannot start.
+#
+# The particle style replaces only the predators' VISUAL; their simulation
+# (movement, hunting, eating, evolution) is unchanged.  While it is active the
+# 2D predator visuals (halo, void, rings, glow, explosions, screen-space lens)
+# are skipped so the two looks never double-draw.
+#
+# Every BH_* value below is live-tunable: press G for the tuning panel and D to
+# print the current values, then paste them here to make them the defaults.
+BLACK_HOLE_STYLE = "particle"
+
+# BH_SCALE_SMOOTHING: how fast the hole's VISUAL size eases toward its target
+# each frame (0..1 lerp factor). The predator's mass grows in discrete steps
+# when it eats (and a lunge can eat several stars at once), which would make the
+# disk pop in size. This smooths those jumps into an organic swell WITHOUT
+# touching the simulation -- the renderer holds its own eased scale per hole.
+# Lower = slower / smoother growth; higher = snappier. 0.08 ~ settles in ~0.5s.
+BH_SCALE_SMOOTHING = 0.08
+
+# ============================================================
+# PARTICLE ACCRETION DISK (BH_PD_*) -- adapted from lechebs/nbody
+# ============================================================
+# Renders each predator's accretion disk as a swarm of glowing particles that
+# orbit the hole (Keplerian, analytic -- no self-gravity needed for the look),
+# additive-blended with a warm blackbody colormap, leaving a dark evacuated
+# center.  This reproduces the N-body look cheaply (hundreds of
+# thousands of particles cost ~0.1ms on the GPU).  Active when
+# BLACK_HOLE_STYLE == 'particle'.  All values are live-tunable (press G).
+
+# BH_PD_PARTICLE_COUNT: number of orbiting particles PER HOLE (3 holes = 3x).
+# More = smoother/denser disk. NOT a live slider (changing it rebuilds the GPU
+# buffer); edit here and restart.
+BH_PD_PARTICLE_COUNT = 280000
+
+# --- Geometry (px at mass = 1.0; scaled by mass/lunge at runtime) ---
+# BH_PD_INNER: inner edge of the disk = radius of the dark evacuated center.
+BH_PD_INNER = 20.0
+# BH_PD_OUTER: outer edge of the glowing disk.
+BH_PD_OUTER = 80.0
+# BH_PD_INCLINATION: viewing tilt in degrees. 0 = face-on (circular disk),
+# 90 = edge-on (thin line). Try 30-60 for a flattened oval.
+BH_PD_INCLINATION = 43.04
+# BH_PD_THICKNESS: vertical scatter of particles as a fraction of radius
+# (puffiness of the disk). 0.02 razor-thin .. 0.2 fat.
+BH_PD_THICKNESS = 0.02
+
+# --- Motion ---
+# BH_PD_SPIN: orbital speed multiplier (inner particles orbit faster, ~r^-1.5).
+BH_PD_SPIN = 1.72
+# BH_PD_LUNGE_SCALE: grow + brighten the disk during a predator lunge.
+BH_PD_LUNGE_SCALE = True
+# BH_PD_LUNGE_SCALE_AMOUNT: disk size multiplier at full lunge.
+BH_PD_LUNGE_SCALE_AMOUNT = 1.45
+
+# --- Appearance ---
+# BH_PD_BRIGHTNESS: exposure of the additive particle glow. Raise until the
+# inner rim reads white-hot; lower for a moodier, redder disk.
+BH_PD_BRIGHTNESS = 1.0
+# BH_PD_DENSITY_CONCENTRATION: how strongly particles bunch toward the inner
+# edge (higher = brighter hot inner rim, sparser outer haze). 1 = uniform.
+BH_PD_DENSITY_CONCENTRATION = 2.2
+# Warm blackbody colormap stops (RGB 0-1): hot inner -> mid -> cool outer.
+BH_PD_COLOR_HOT = (1.0, 0.96, 0.82)
+BH_PD_COLOR_MID = (1.0, 0.48, 0.14)
+BH_PD_COLOR_COOL = (0.42, 0.05, 0.02)
+
+# --- Scene integration (how the disk sits over the galaxy) ---
+# BH_PD_HALO_STRENGTH: brightness the galaxy/trails retain in the dimmed halo
+# around the hole (1.0 = no dimming, 0.4 = strong dark surround so the disk
+# pops, closer to a pure black field).
+BH_PD_HALO_STRENGTH = 0.0
+# BH_PD_HALO_REACH: radius of the dimmed halo as a multiple of the disk outer
+# radius. Also sets the sub-rect the GPU reads back, so keep modest.
+BH_PD_HALO_REACH = 1.33
+# BH_PD_DARK_CENTER: size of the opaque dark center as a multiple of the inner
+# radius (occludes the galaxy behind the hole). 1.0 = exactly the disk's hole.
+BH_PD_DARK_CENTER = 0.9
+
 # --- Galaxy Background (Precomputed at Startup) ---
 # A static star field + nebula fog rendered behind boid trails.
 # Computed once — zero per-frame cost except one surface blit.
+# Star counts, nebula colours and twinkle are boosted (about 2x the original)
+# so the galaxy still reads on a projector, which washes out dark tones.
 GALAXY_BG_ENABLED = True
 
 # Star Field (Stars — Gaussian clusters, brightness variation)
 # Distant stars: single-pixel dim background scattered uniformly.
-NUM_STARS_DISTANT = 2000
+NUM_STARS_DISTANT = 5000
 # Medium stars: Gaussian-clustered around galactic centers, 1-2 px.
-NUM_STARS_MEDIUM = 400
+NUM_STARS_MEDIUM = 800
 # Bright stars: scattered foreground with 3x3 cross pattern + glow.
-NUM_STARS_BRIGHT = 40
+NUM_STARS_BRIGHT = 80
 # Mega stars: very bright with multi-pixel Gaussian glow halos.
-NUM_STARS_MEGA = 8
+NUM_STARS_MEGA = 16
 
 # Galactic cluster centers as (x_frac, y_frac, spread_frac).
 # Coordinates are fractions of WIDTH/HEIGHT for resolution independence.
@@ -450,7 +550,7 @@ STAR_CLUSTER_CENTERS = [
 # Nebula Fog (Perlin Noise concepts — smooth organic patterns)
 # Maximum per-channel brightness for nebula pixels.
 # Keep low (30-50) so nebula doesn't overwhelm boid trails.
-NEBULA_MAX_BRIGHTNESS = 60
+NEBULA_MAX_BRIGHTNESS = 100
 # Base grid size for noise generation (larger = broader fog structures).
 NEBULA_GRID_SIZE = 48
 # Number of noise layers composited for richer detail.
@@ -459,18 +559,18 @@ NEBULA_OCTAVES = 8
 # Nebula tint colors — each generates a separate noise layer.
 # (RGB channel manipulation, additive color mixing)
 NEBULA_COLORS = [
-    (30, 10, 50),  # Deep purple
-    (20, 30, 60),  # Deep blue
-    (50, 15, 35),  # Dark pink/magenta
-    (40, 25, 10),  # Warm amber
+    (50, 18, 80),  # Deep purple (boosted for projectors)
+    (35, 50, 95),  # Deep blue
+    (80, 25, 55),  # Dark pink/magenta
+    (65, 40, 18),  # Warm amber
 ]
 
 # Twinkle Effect (Animation & Time — sine-wave brightness)
 TWINKLE_ENABLED = True
 # How many stars twinkle. Kept small for performance.
-TWINKLE_COUNT = 25
+TWINKLE_COUNT = 50
 # Brightness oscillation fraction (+/- this amount). 0.15 = +/- 15%.
-TWINKLE_AMPLITUDE = 0.15
+TWINKLE_AMPLITUDE = 0.25
 # (min, max) frequency in Hz for sine oscillation per star.
 TWINKLE_SPEED_RANGE = (0.3, 1.2)
 
@@ -623,7 +723,7 @@ NEBULA_CLOUD_MAX_DENSITY = 1.0  # peak density at center
 NEBULA_CLOUD_REGEN_RATE = 0.002  # density recovery per frame
 NEBULA_CLOUD_DEPLETION_RATE = 0.0005  # density lost per feeding boid per frame
 NEBULA_CLOUD_MIN_DENSITY = 0.1  # floor — clouds never fully deplete
-NEBULA_CLOUD_DRIFT_SPEED = 0.15  # slow drift (px/frame) to prevent camping
+NEBULA_CLOUD_DRIFT_SPEED = 0.198  # slow drift (px/frame) to prevent camping
 
 # --- Star Energy (Metabolism) ---
 # Each star has an internal energy that depletes over time.
