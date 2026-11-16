@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "selection-pressure"
+dynamic = ["version"]
+description = "Real-time boid flocking, black-hole predators and evolution, built as a wall-projection installation."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Burak Kagan Yilmazer" }]
+requires-python = ">=3.10"
+dependencies = [
+    "moderngl>=5.8,<6",
+    "numpy>=1.24,<3",
+    "pygame>=2.5,<3",
+]
+keywords = ["boids", "flocking", "generative-art", "genetic-algorithm", "pygame", "simulation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: MacOS X",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Artistic Software",
+    "Topic :: Scientific/Engineering :: Artificial Life",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "pre-commit>=3.7"]
+
+[project.urls]
+Homepage = "https://github.com/burakkagann/selection-pressure"
+Source = "https://github.com/burakkagann/selection-pressure"
+Issues = "https://github.com/burakkagann/selection-pressure/issues"
+Changelog = "https://github.com/burakkagann/selection-pressure/blob/main/CHANGELOG.md"
+
+[project.scripts]
+selection-pressure = "selection_pressure.cli:main"
+
+[tool.hatch.version]
+path = "src/selection_pressure/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/selection_pressure"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",    # long lines: handled by the formatter where it can
+    "SIM102",  # nested ifs often mirror the simulation rules more clearly
+    "SIM105",
+    "SIM108",  # explicit if/else kept for readability of colour logic
+]
+
+[tool.ruff.format]
+quote-style = "preserve"
